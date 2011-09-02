@@ -1,0 +1,44 @@
+#!/usr/bin/python3
+
+import os
+import cutags
+#from pygooglechart import PieChart3D
+
+musicdir="/ftp/musik/"
+
+class Stat:
+    def __init__(self):
+        self.length = 0
+        self.count = 0
+        self.size = 0
+
+stats = {}
+
+for dp, dn, filenames in os.walk(musicdir):
+    for f in filenames:
+        fn = os.path.join(dp,f)
+        try:
+            print("current file: {}".format(fn))
+            audio = cutags.File(fn)
+            format = fn[fn.rfind(".")+1:].lower()
+            if format not in stats:
+                stats[format] = Stat()
+            stats[format].length += audio.length
+            stats[format].count += 1
+            stats[format].size += os.path.getsize(fn)
+        except RuntimeError:
+            pass #ignoriere .jpg- etc. fehler
+sizes = []
+lengths = []
+counts = []
+for s in stats:
+    print("Type: {0}".format(s))
+    print("Number of files: {0}".format(stats[s].count))
+    print("Total in seconds: {0}".format(stats[s].length))
+    print("Total file size: {0}".format(stats[s].size))
+    print("***************\n")
+    sizes.append((s, stats[s].size))
+    lengths.append((s, stats[s].length))
+    counts.append((s, stats[s].count))
+
+    
