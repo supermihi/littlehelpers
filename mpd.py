@@ -135,7 +135,6 @@ class MPDClient(object):
         self._command_list.append(retval)
     def _write_line(self, line):
         self._wfile.write("{0}\n".format(line))
-        print("{0}\n".format(line))
         self._wfile.flush()
     def _write_command(self, command, args=[]):
         parts = [command]
