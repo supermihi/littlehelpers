@@ -132,26 +132,34 @@ def interact():
         pass
 # ~~~~~~ END interact() ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def check():
+def check(oneLine = False):
     """Checks for profiles that are 'over time', prints a warning message for each of such."""
-
+    msgs = []
     for pname,profile in options.profiles.items():
         if profile["device"] and os.path.exists(profile["device"]):
-            print("CAUTION: device {} is available for backup.".format(pname))
-            ans = input("Do you want to start a backup? [Y/n] ")
-            if ans in ( "y", "Y", ""):
-                do_backup(pname)
+            if not oneLine:
+                print("CAUTION: device {} is available for backup.".format(pname))
+                ans = input("Do you want to start a backup? [Y/n] ")
+                if ans in ( "y", "Y", ""):
+                    do_backup(pname)
+            else:
+                msgs.append("Backup-dev {} available".format(pname))
                 
         last = profile["last"]
         maxinterval = profile["interval"]
         now = datetime.datetime.now()
         if (now - last) > maxinterval:
-            print(options.motzmessage.format(profile = pname, last = (now - last).days, interval = maxinterval.days))
-            sys.stdout.flush()
-            if not profile["device"]:
-                ans = input("could start now -- ok? [Y/n] ")
-                if ans in ("y", "Y", ""):
-                    do_backup(pname)
+            if oneLine:
+                msgs.append("BACKUP {} OUTDATED: {} DAYS".format(pname, (now-last).days))
+            else:
+                print(options.motzmessage.format(profile = pname, last = (now - last).days, interval = maxinterval.days))
+                sys.stdout.flush()
+                if not profile["device"]:
+                    ans = input("could start now -- ok? [Y/n] ")
+                    if ans in ("y", "Y", ""):
+                        do_backup(pname)
+    if oneLine:
+        print("; ".join(msgs))
                 
             
 # ~~~~~~ END check() ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -311,8 +319,11 @@ def do_backup(profile):
 # ~~~~~~ END do_backup(profile) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "check":
-        check()
+    if len(sys.argv) > 1 and sys.argv[1][:5] == "check":
+        if sys.argv[1] == "check":
+            check()
+        elif sys.argv[1] == "check1":
+            check(True)
     else:
         if len(sys.argv) > 1:
             profile = sys.argv[1]

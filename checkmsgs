@@ -1,5 +1,4 @@
 #!/bin/bash
-
 NUMUPDATES=$(pacman -Qu | wc -l)
 
 if [ $NUMUPDATES = 1 ]; then
@@ -8,5 +7,6 @@ elif [ $NUMUPDATES -gt 1 ]; then
     echo $NUMUPDATES Updates verfügbar.
 fi
 
-  
+echo $(~/code/littlehelpers/b check1)  
+
 
