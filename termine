@@ -1,0 +1,19 @@
+#!/usr/bin/python3
+
+import sqlite3
+import os.path
+import sys
+
+db = os.path.expanduser("~/.termine.db")
+
+
+if len(sys.argv) == 1:
+    conn = sqlite3.connect(db)
+
+    termine = [t[0] for t in conn.execute("select text from termine WHERE datetime(von) <= datetime('now','localtime') AND datetime(bis) >= datetime('now','localtime');")] + [t[0] for t in conn.execute("select text from periodic WHERE ((tag is NULL) OR (tag== CAST( strftime('%d', 'now', 'localtime') AS INTEGER))) AND ((wochentag is NULL) OR (wochentag == CAST(strftime('%w', 'now', 'localtime') AS INTEGER))) AND (time(von) <= time('now', 'localtime')) AND (time(bis) >= time('now', 'localtime'));")]
+    print("; ".join(termine))
+
+    conn.close()
+
+else:
+    os.system('sqlite3 {}'.format(db))
