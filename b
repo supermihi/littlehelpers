@@ -46,7 +46,8 @@ class Options:
             "paths":[],
             "last":datetime.datetime.min,
             "interval":datetime.timedelta(days=DEFAULT_INTERVAL),
-            "target":""
+            "target":"",
+            "mount_sudo":None,
         }
         
         self.profiles = {}
@@ -71,7 +72,7 @@ class Options:
                     print(_("WARNING: The option '{0}' in {1} is not a valid profile option.").format(option, PROFILE_CONF_PATH))
                 
                 parser_option = parser.get(profile,option)
-                if option in ["device", "crypttab_name", "mountpoint", "target"]: # string options -- just copy
+                if option in ["device", "crypttab_name", "mountpoint", "target", "mount_sudo"]: # string options -- just copy
                     self.profiles[profile][option] = parser_option
                 elif option in ["paths"]: # list options, separated by comma
                     self.profiles[profile][option] = parser_option.split(',')
@@ -156,7 +157,7 @@ def check():
             
 # ~~~~~~ END check() ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def mount(mountpoint):
+def mount(mountpoint, sudo = False):
     """Mounts the given mountpoint, if it isn't mounted already."""
     
     # check if already mounted
@@ -167,7 +168,10 @@ def mount(mountpoint):
                 print("Filesystem already mounted.")
                 return
     # need to mount
-    subprocess.check_call(["mount", mountpoint])
+    if sudo:
+        subprocess.check_call(["sudo", "mount", mountpoint])
+    else:
+        subprocess.check_call(["mount", mountpoint])
 # ~~~~~~ END mount(mountpoint) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def get_excludes(path):
@@ -268,7 +272,7 @@ def do_backup(profile):
         mountpoint = profopts["mountpoint"]
         target_base = os.path.join(mountpoint,profopts["target"])
         try:
-            mount(mountpoint)
+            mount(mountpoint, profopts["mount_sudo"])
         except subprocess.CalledProcessError:
             print(_("Unable to mount device."))
             return 19
