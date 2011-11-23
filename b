@@ -260,6 +260,7 @@ def do_backup(profile):
     profopts = options.profiles[profile]
     need_decrypt = profopts["crypttab_name"]
     need_mount = profopts["mountpoint"]
+    mount_sudo = profopts["mount_sudo"]
     backup_errors = 0
     if need_decrypt: 
         # we need to decrypt first
@@ -272,7 +273,7 @@ def do_backup(profile):
         mountpoint = profopts["mountpoint"]
         target_base = os.path.join(mountpoint,profopts["target"])
         try:
-            mount(mountpoint, profopts["mount_sudo"])
+            mount(mountpoint, mount_sudo)
         except subprocess.CalledProcessError:
             print(_("Unable to mount device."))
             return 19
@@ -290,7 +291,10 @@ def do_backup(profile):
   
     if need_mount:
         try:
-            subprocess.check_call(["umount", mountpoint])
+            if mount_sudo:
+                subprocess.check_call(["sudo", "umount", mountpoint])
+            else:
+                subprocess.check_call(["umount", mountpoint])
         except:
             print(_("WARNING: Failed to unmount device."))
             if not need_decrypt:
