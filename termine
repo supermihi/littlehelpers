@@ -1,17 +1,39 @@
 #!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# Copyright 2011 Michael Helmling
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 3 as
+# published by the Free Software Foundation
 
+"""
+*termine* is an extremely ligthweight command-line calendar tool. Its purpos is to display reminders in status bars or other single-line textual environments.
+It uses an sqlite3 database to store reminders. The database has two tables:
+- "termine" is the table for unique events. It has three columns:
+    - von: contains the datetime from which on the reminder is to be displayed (in the format YYYY-MM-DD hh:mm:ss)
+    - bis: contains the datetime up to which the reminder is to be displayed (same format)
+    - text: contains the message which is to be displayed in the defined time interval.
+- "periodic" is the table for periodic events. It has five columns:
+    - von: time in the format hh:mm at which to start display the reminder
+    - bis: time in the format hh:mm until which to display the reminder
+    - wochentag: day of week (as number, starting with sunday=0) at which the reminder is to be displayed, or NULL if unspecified
+    - tag: day of month at which the reminder is to be displayed, or NULL if unspecified
+    - text: the displayed message
+To display all reminders whose display interval(s) contain the current time, call this script without arguments. To edit the sqlite
+database, call with option "-e". 
+"""
 import sqlite3
 import os.path
 import sys
 
-db = os.path.expanduser("~/.termine.db")
-
+db = os.path.expanduser("~/.termine.db") # location of the database
+separator = "; " # string used to separate several concurrent reminders
 
 if len(sys.argv) == 1:
     conn = sqlite3.connect(db)
 
     termine = [t[0] for t in conn.execute("select text from termine WHERE datetime(von) <= datetime('now','localtime') AND datetime(bis) >= datetime('now','localtime');")] + [t[0] for t in conn.execute("select text from periodic WHERE ((tag is NULL) OR (tag== CAST( strftime('%d', 'now', 'localtime') AS INTEGER))) AND ((wochentag is NULL) OR (wochentag == CAST(strftime('%w', 'now', 'localtime') AS INTEGER))) AND (time(von) <= time('now', 'localtime')) AND (time(bis) >= time('now', 'localtime'));")]
-    print("; ".join(termine))
+    print(separator.join(termine))
 
     conn.close()
 

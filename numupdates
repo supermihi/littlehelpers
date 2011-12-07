@@ -1,0 +1,23 @@
+#!/bin/bash
+# A small shell script to determine the number of available package updates
+# on Arch Linux or Debian-based systems (the latter requires aptitude to be
+# installed) and display a corresponding text message.
+
+ONE_UPDATE_MESSAGE="Eine Aktualisierung verfügbar."
+SEVERAL_UPDATES_MESSAGE="Es sind %s Aktualisierungen verfügbar."
+
+if [ $(lsb_release -i -s) = Arch ]; then
+    NUMUPDATES=$(pacman -Qu | wc -l)
+else
+    NUMUPDATES=$(aptitude search "~U" | wc -l)
+fi
+
+
+
+if [ "$NUMUPDATES" -gt 0 ]; then
+  if [ $NUMUPDATES -eq 1 ]; then
+    echo $ONE_UPDATE_MESSAGE
+  else
+    printf "$SEVERAL_UPDATES_MESSAGE" $NUMUPDATES
+  fi
+fi
