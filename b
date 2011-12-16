@@ -91,7 +91,9 @@ class Options:
                 if not option in self.path_default:
                     print(_("WARNING: The option '{0}' in {1} is not a valid path option.").format(option, PATH_CONF_PATH))
 
-                if option in ["source", "dest", "inherit_excludes"]: # string options
+                if option in ["source", "dest"]:
+                    self.paths[path][option] = os.path.expanduser(os.path.expandvars(parser.get(path,option)))
+                elif option == "inherit_excludes": # string options
                     self.paths[path][option] = parser.get(path,option)
                 elif option in ["sudo"]:
                     self.paths[path][option] = parser.getboolean(path,option)
