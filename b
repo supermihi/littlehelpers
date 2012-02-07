@@ -80,7 +80,8 @@ class Options:
                     self.profiles[profile][option] = datetime.timedelta(days = int(parser_option))
             if os.path.exists(os.path.join(confdir, ".last_backup_" + profile)):
                 with open(os.path.join(confdir, ".last_backup_" + profile)) as lastfile:
-                    self.profiles[profile]["last"] = datetime.datetime.strptime(lastfile.read(), DATE_FORMAT)
+                    string = lastfile.read().strip()
+                    self.profiles[profile]["last"] = datetime.datetime.strptime(string, DATE_FORMAT)
             
     def read_paths(self):
         parser = configparser.ConfigParser()
