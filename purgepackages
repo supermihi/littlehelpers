@@ -1,0 +1,2 @@
+#!/bin/sh
+dpkg -l | grep ^rc | cut -d' ' -f3| sudo xargs dpkg -P
