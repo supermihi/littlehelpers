@@ -1,3 +1,7 @@
 #!/bin/sh
-dpkg-query -W --showformat='${Installed-Size} ${Package}\n' | sort -n
+if [ $(lsb_release -i -s) = archlinux ]; then
+    LANG=C pacman -Qi | awk '/^Name/ {pkg=$3} /Size/ {print $4$5,pkg}' | sort -n
+else
+    dpkg-query -W --showformat='${Installed-Size} ${Package}\n' | sort -n
+fi
 
