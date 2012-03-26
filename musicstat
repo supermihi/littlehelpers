@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import os
-import cutags
+import taglib
 #from pygooglechart import PieChart3D
 
 musicdir="/ftp/musik/"
@@ -19,14 +19,14 @@ for dp, dn, filenames in os.walk(musicdir):
         fn = os.path.join(dp,f)
         try:
             print("current file: {}".format(fn))
-            audio = cutags.File(fn)
+            audio = taglib.File(fn)
             format = fn[fn.rfind(".")+1:].lower()
             if format not in stats:
                 stats[format] = Stat()
             stats[format].length += audio.length
             stats[format].count += 1
             stats[format].size += os.path.getsize(fn)
-        except RuntimeError:
+        except OSError:
             pass #ignoriere .jpg- etc. fehler
 sizes = []
 lengths = []
