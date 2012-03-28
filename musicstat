@@ -1,8 +1,7 @@
 #!/usr/bin/python3
-
+# scans music collection and outputs file size and playback length, grouped by file type.
 import os
 import taglib
-#from pygooglechart import PieChart3D
 
 musicdir="/ftp/musik/"
 

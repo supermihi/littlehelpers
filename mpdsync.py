@@ -1,5 +1,7 @@
-#!/usr/bin/env python3.1
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# syncs two instances of MPD for multi-room playback
 import mpd
 import time
 HOST_1 = "localhost"

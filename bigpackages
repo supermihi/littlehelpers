@@ -1,4 +1,6 @@
 #!/bin/sh
+# Shows installed packages, ordered decreasingly by install size.
+# Works for both Arch Linux and Debian-based distributions.
 if [ $(lsb_release -i -s) = archlinux ]; then
     LANG=C pacman -Qi | awk '/^Name/ {pkg=$3} /Size/ {print $4$5,pkg}' | sort -n
 else

@@ -1,2 +1,3 @@
 #!/bin/sh
+# purge packages wich removed but not purged
 dpkg -l | grep ^rc | cut -d' ' -f3| sudo xargs dpkg -P

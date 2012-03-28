@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #Filename: transsync.py
+# Maintains a copy of a music collection, in which FLAC files are recoded to OGG Vorbis for space reasons.
+# Other files are hard linked, so no additional space is wasted for them.
 
 import os, subprocess, os.path
 from threading import Thread
