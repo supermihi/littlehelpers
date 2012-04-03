@@ -26,7 +26,7 @@ DEFAULT_INTERVAL = 12
 class Options:
     def __init__(self):
         self.interactivity="delay"
-        self.interactivity_delay=5
+        self.interactivity_delay=2
         self.motzmessage=_(
             "******************************* WARNUNG ********************************\n" +  
             "************************************************************************\n" +
@@ -179,6 +179,7 @@ def mount(mountpoint, sudo = False):
                 print("Filesystem already mounted.")
                 return
     # need to mount
+    print('Mounting "{}"'.format(mountpoint))
     if sudo:
         subprocess.check_call(["sudo", "mount", mountpoint])
     else:
@@ -253,7 +254,7 @@ def do_path(path, target_base):
     except OSError as e:
         raise RsyncRunException(_("Problem calling rsync: {0}").format(str(e)))
     if rsync_proc.returncode != 0:
-        raise RsyncRunException(_("Rsync exited with non-zero return code: {0}").format(stderr))
+        raise RsyncRunException(_("Rsync exited with non-zero return code:\n\n{0}").format(stderr.decode('utf8')))
 # ~~~~~~ END do_path(path, target_base) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def find_profile():
@@ -297,7 +298,7 @@ def do_backup(profile):
             print("path {} finished successful".format(path))
         except RsyncRunException as rse:
             backup_errors = backup_errors + 1
-            print(_("Error backing up {0}, rsync faild with {1}").format(path, rse.what))
+            print(_("Error backing up {0}, rsync faild with {1}").format(path,rse.what))
             input()
   
     if need_mount:
