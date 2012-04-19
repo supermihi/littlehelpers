@@ -37,5 +37,7 @@ if len(sys.argv) == 1:
 
     conn.close()
 
-else:
+elif sys.argv[1] == "-e":
     os.system('sqlite3 {}'.format(db))
+elif sys.argv[1] == "-g":
+    os.system('sqlitebrowser {}'.format(db))
