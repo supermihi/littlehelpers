@@ -2,7 +2,7 @@
 # purge packages which are removed but not purged
 DPKG_CMD=$(which dpkg 2>/dev/null)
 if [ -n "$DPKG_CMD" ]; then
-  dpkg -l | grep ^rc | cut -d' ' -f3| sudo xargs dpkg -P
+  $DPKG_CMD -l | grep ^rc | cut -d' ' -f3| sudo xargs $DPKG_CMD -P
 else
   echo "Error: no deb-base distribution; cannot purge packages!"
   exit 1
