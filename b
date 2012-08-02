@@ -232,7 +232,7 @@ def do_path(path, target_base):
         existing_versions.sort() #earliest first
         for oldversion in existing_versions[:-versions+1]: #delete old backups
             
-            rm_cmd = "rm -rfI '{0}'".format(os.path.join(dest,oldversion.strftime(DATE_FORMAT)).replace("'","\'"))
+            rm_cmd = "rm -rf '{0}'".format(os.path.join(dest,oldversion.strftime(DATE_FORMAT)).replace("'","\'"))
             if pathopts["sudo"]:
                 rm_cmd = "sudo " + rm_cmd
             print(_("Executing command {0}").format(rm_cmd))
