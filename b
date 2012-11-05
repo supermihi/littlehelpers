@@ -180,10 +180,11 @@ def mount(mountpoint, sudo = False):
                 print("Filesystem already mounted.")
                 return
     # need to mount
-    print('Mounting "{}"'.format(mountpoint))
     if sudo:
+        print('executing: "sudo mount {}"'.format(mountpoint))
         subprocess.check_call(["sudo", "mount", mountpoint])
     else:
+        print('executing: "mount {}"'.format(mountpoint))
         subprocess.check_call(["mount", mountpoint])
 # ~~~~~~ END mount(mountpoint) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -279,6 +280,7 @@ def do_backup(profile):
     if need_decrypt: 
         # we need to decrypt first
         try:
+            print('executing: "sudo cryptdisks_start {}"'.format(profopts["crypttab_name"]))
             subprocess.check_call(["sudo", "cryptdisks_start", profopts["crypttab_name"]])
         except subprocess.CalledProcessError:
             print(_("Unable to decrypt device."))
