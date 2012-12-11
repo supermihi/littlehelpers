@@ -1,0 +1,78 @@
+#!/usr/bin/python
+# coding: UTF-8
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 3 as
+# published by the Free Software Foundation
+
+# mensakoblenz - Skript zur Textausgabe des aktuellen Tagesmenüs in der
+# Mensa der Uni Koblenz.
+# 
+
+from collections import OrderedDict
+import datetime
+import urllib.request
+import sys
+
+from bs4 import BeautifulSoup, SoupStrainer
+
+speiseplanURL="http://www.studierendenwerk-koblenz.de/go/uni-campus-koblenz/essen/speiseplan"
+tableClass="speiseplan kw kw-{}" # Klasse der Speiseplan-Tabelle; Kalenderwoche als Platzhalter
+
+def getHTML():
+    """Komplette HTML-Seite abrufen."""
+    with urllib.request.urlopen(speiseplanURL) as f:
+        html = f.read().decode('utf-8')
+    return html
+    
+def getTable(html, week):
+    """Tabelle der angegebenen Woche als Liste von OrderedDicts parsen.
+    
+    Gibt eine Liste zurück, die den numerischen Wochentag (0 = Montag) auf ein geordnetes
+    Dictionary abbildet. In letzterem wird die Art des Menüs ("Abendmensa", "Menü 1", etc.)
+    auf das Menü des entsprechenden Wochentags abgebildet.
+    """
+    onlyCurrentWeek = SoupStrainer(class_=tableClass.format(week))
+    soup = BeautifulSoup(html, parse_only=onlyCurrentWeek).contents[0]
+    headers = [head.text for head in soup.contents[0].contents[1:]] # erste Spalte auslassen (Datum)
+    ans = []
+    for row in soup.contents[1:]:
+        cols = [ col.text for col in row.contents[1:] ]
+        dct = OrderedDict(zip(headers, cols))
+        ans.append(dct)
+    return ans
+        
+def currentWeekAndDay():
+    """Gibt die aktuelle Kalenderwoche und den Wochentag als Tupel zurück"""
+    today = datetime.date.today()
+    return today.isocalendar()[1], today.weekday()
+
+filterConversions = { "all" : "", "veggie" : "vegetarisch", "pasta" : "extra"}
+"""Eine Liste von Ersetzungstexten für Kommandozeilenparameter."""
+
+def todaysMenu(filter=None):
+    """Das heutige Menü; falls *filter* gesetzt ist, nur Menüs der entsprechenden Art.
+    
+    Gefiltert werden alle Menüarten die den Filter (oder den entsprechenden Ersetzungstext aus
+    *filterConversions* als Teiltext enthalten. Beispiele: "veg", "veggie", "abend", "pasta".
+    """
+    html = getHTML()
+    week, day = currentWeekAndDay()
+    table = getTable(html, week)
+    menu = table[day]
+    if filter is not None:
+        filter = filter.lower()
+        if filter in filterConversions:
+            filter = filterConversions[filter].lower()
+        menu = OrderedDict( (kind, dish) for kind, dish in menu.items() if filter in kind.lower() )
+    return menu
+
+if __name__ == "__main__":
+    """Standardverhalten: Gib das heutige Menü aus; eventueller Filter wird aus Argument 1 gelesen."""
+    menu = todaysMenu(sys.argv[1] if len(sys.argv) > 1 else None)
+    maxNameLength = max(len(kind) for kind in menu)
+    for kind, dish in menu.items():
+        if len(sys.argv) <= 2:
+            print(('{:' + str(maxNameLength) + 's}: {}').format(kind, dish))
+        else:
+            print(dish)
