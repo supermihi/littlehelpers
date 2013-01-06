@@ -6,7 +6,7 @@
 ONE_UPDATE_MESSAGE="Eine Aktualisierung verfügbar."
 SEVERAL_UPDATES_MESSAGE="Es sind %s Aktualisierungen verfügbar."
 
-if [ $(lsb_release -i -s) = archlinux ]; then
+if [ $(lsb_release -i -s) = arch ]; then
     NUMUPDATES=$(pacman -Qu | wc -l)
 else
     NUMUPDATES=$(aptitude search "~U" | wc -l)

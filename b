@@ -49,6 +49,7 @@ class Options:
             "target":"",
             "mount_sudo":None,
             "umount_crypt":False,
+            "rsync_opts":""
         }
         
         self.profiles = {}
@@ -73,7 +74,7 @@ class Options:
                     print(_("WARNING: The option '{0}' in {1} is not a valid profile option.").format(option, PROFILE_CONF_PATH))
                 
                 parser_option = parser.get(profile,option)
-                if option in ["device", "crypttab_name", "mountpoint", "target", "mount_sudo", "umount_crypt"]: # string options -- just copy
+                if option in ["device", "crypttab_name", "mountpoint", "target", "mount_sudo", "umount_crypt", "rsync_opts"]: # string options -- just copy
                     self.profiles[profile][option] = parser_option
                 elif option in ["paths"]: # list options, separated by comma
                     self.profiles[profile][option] = parser_option.split(',')
@@ -200,7 +201,7 @@ def get_excludes(path):
     return excludes
 
 
-def do_path(path, target_base):
+def do_path(profile, path, target_base):
     """Runs the rsync command for a single path. Assumes that everythings's mounted & decrypted."""
     pathopts = options.paths[path]
     source = pathopts["source"]
@@ -211,6 +212,8 @@ def do_path(path, target_base):
         except OSError as e:
             raise RsyncRunException(_("Target directory does not exist and cannot create it: {0}").format(str(e)))
     rsync_opts = RSYNC_DEFAULT_ARGS
+    if options.profiles[profile]["rsync_opts"] != "":
+        rsync_opts.append(options.profiles[profile]["rsync_opts"])
     excludes = get_excludes(path)
     for excludefile in excludes:
         rsync_opts.append("--exclude-from=" + excludefile)
@@ -298,7 +301,7 @@ def do_backup(profile):
     
     for path in profopts["paths"]:
         try:
-            do_path(path, target_base)
+            do_path(profile, path, target_base)
             print("path {} finished successful".format(path))
         except RsyncRunException as rse:
             backup_errors = backup_errors + 1
