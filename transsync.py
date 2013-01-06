@@ -101,16 +101,20 @@ print("\rDone creating directories.")
 
 # delete files without corresponding sources and empty folders
 for dirpath, dirnames, files in os.walk(targetpath, topdown=False):
+    dirInSource = os.path.join(sourcepath,os.path.relpath(dirpath,targetpath))
+    if not os.path.exists(dirInSource):
+        print("removing directory {}".format(dirpath))
+        os.rmdir(dirpath)
+        print('does not exist: {}'.format(dirInSource))
+        continue
     for file in files:
-        if os.path.exists(os.path.join(sourcepath,os.path.relpath(dirpath,targetpath),file)):
+        if os.path.exists(os.path.join(dirInSource,file)):
             continue
-        if os.path.exists(os.path.join(sourcepath,os.path.relpath(dirpath,targetpath),file.rsplit(".",1)[0]+".flac")):
+        if os.path.exists(os.path.join(dirInSource,file.rsplit(".",1)[0]+".flac")):
             continue
         print("deleting {0}".format(os.path.join(dirpath,file)))
         os.remove(os.path.join(dirpath,file))
-    if len(files) == 0 and len(dirnames) == 0:
-        print("removing directory {}".format(dirpath))
-        os.rmdir(dirpath)
+
 
         
 
