@@ -9,12 +9,14 @@ from threading import Thread
 import queue
 import sys, time, shutil, signal
 
+import taglib
+
 # ---- configuration -----------
 sourcepath="/ftp/musik"
 targetpath="/ftp/musiksmall"
 oggopts=["-q5","-Q"] # quality 5 and quiet mode
-threads = 4 
-hardlinks = True # use hardlinks instead of copying files
+threads = 4
+hardlinks = True # use hardlinks instead of copying non-FLAC files
 deleteold = True # delete existing files in target directory if they have older mtime than source
 # ------------------------------
 
@@ -97,8 +99,8 @@ for dirpath, dirnames, files in os.walk(sourcepath):
 sys.stdout.write("\r" + " "*bla)    
 print("\rDone creating directories.")
 
-# delete files without corresponding sources and empty folder
-for dirpath, dirnames, files in os.walk(targetpath):
+# delete files without corresponding sources and empty folders
+for dirpath, dirnames, files in os.walk(targetpath, topdown=False):
     for file in files:
         if os.path.exists(os.path.join(sourcepath,os.path.relpath(dirpath,targetpath),file)):
             continue
@@ -106,6 +108,9 @@ for dirpath, dirnames, files in os.walk(targetpath):
             continue
         print("deleting {0}".format(os.path.join(dirpath,file)))
         os.remove(os.path.join(dirpath,file))
+    if len(files) == 0 and len(dirnames) == 0:
+        print("removing directory {}".format(dirpath))
+        os.rmdir(dirpath)
 
         
 
