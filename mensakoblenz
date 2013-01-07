@@ -17,7 +17,7 @@ import sys
 from bs4 import BeautifulSoup, SoupStrainer
 
 speiseplanURL="http://www.studierendenwerk-koblenz.de/go/uni-campus-koblenz/essen/speiseplan"
-tableClass="speiseplan kw kw-{}" # Klasse der Speiseplan-Tabelle; Kalenderwoche als Platzhalter
+tableClass="speiseplan kw kw-{:02d}" # Klasse der Speiseplan-Tabelle; Kalenderwoche als Platzhalter
 
 def getHTML():
     """Komplette HTML-Seite abrufen."""
