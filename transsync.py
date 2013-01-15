@@ -104,7 +104,7 @@ for dirpath, dirnames, files in os.walk(targetpath, topdown=False):
     dirInSource = os.path.join(sourcepath,os.path.relpath(dirpath,targetpath))
     if not os.path.exists(dirInSource):
         print("removing directory {}".format(dirpath))
-        os.rmdir(dirpath)
+        shutil.rmtree(dirpath)
         print('does not exist: {}'.format(dirInSource))
         continue
     for file in files:
