@@ -1,0 +1,5 @@
+#!/bin/bash
+BASENAME="$1"
+for ending in .aux .bbl .bcf .blg -blx.bib .log .out .run.xml .synctex.gz; do
+  rm "$BASENAME$ending"
+done
