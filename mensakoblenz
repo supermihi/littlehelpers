@@ -1,13 +1,14 @@
 #!/usr/bin/python
 # coding: UTF-8
-
+# Copyright: 2013 Michael Helmling
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
-
+#
 # mensakoblenz - Skript zur Textausgabe des aktuellen Tagesmenüs in der
 # Mensa der Uni Koblenz.
-# 
+ 
 
 from collections import OrderedDict
 import datetime
@@ -37,7 +38,7 @@ def getTable(html, week):
     headers = [head.text for head in soup.contents[0].contents[1:]] # erste Spalte auslassen (Datum)
     ans = []
     for row in soup.contents[1:]:
-        cols = [ col.text.strip() for col in row.contents[1:] ]
+        cols = [ col.text.strip(". ") for col in row.contents[1:] ]
         dct = OrderedDict(zip(headers, cols))
         ans.append(dct)
     return ans
@@ -47,33 +48,35 @@ def currentWeekAndDay():
     today = datetime.date.today()
     return today.isocalendar()[1], today.weekday()
 
-filterConversions = { "all" : "", "veggie" : "vegetarisch", "pasta" : "extra"}
+extraFilters = { "all" : "", "veggie" : "vegetarisch", "pasta" : "extra"}
 """Eine Liste von Ersetzungstexten für Kommandozeilenparameter."""
 
 def todaysMenu(filters=None):
     """Das heutige Menü; falls *filter* gesetzt ist, nur Menüs der entsprechenden Art.
     
     Gefiltert werden alle Menüarten die den Filter (oder den entsprechenden Ersetzungstext aus
-    *filterConversions* als Teiltext enthalten. Beispiele: "veg", "veggie", "abend", "pasta".
+    *extraFilters* als Teiltext enthalten. Beispiele: "veg", "veggie", "abend", "pasta".
     """
     html = getHTML()
     week, day = currentWeekAndDay()
     table = getTable(html, week)
-    menu = table[day]
+    tableToday = table[day]
     if filters is not None and len(filters) > 0:
-        filters = [filterConversions[f.lower()] if f in filterConversions else f.lower() for f in filters]
-        menu = OrderedDict( (kind, dish) for kind, dish in menu.items() if any(f in kind.lower() for f in filters))
-    for key, value in menu.items():
-        if value[-1] == ".":
-            menu[key] = value[:-1]
+        filters = [extraFilters[f.lower()] if f in extraFilters else f.lower() for f in filters]
+        menu = OrderedDict()
+        for kind, dish in tableToday.items():
+            if not any(f in kind.lower() for f in filters):
+                continue
+            menu[kind] = dish
     return menu
 
 if __name__ == "__main__":
     """Standardverhalten: Gib das heutige Menü aus; eventueller Filter wird aus Argument 1 gelesen."""
     import argparse
     parser = argparse.ArgumentParser(description="Menü der Mensa Koblenz anzeigen")
-    parser.add_argument("-s", "--short", help="Ausgabe in Kurzform", action="store_true")
-    parser.add_argument("-m", "--maindish", help="Nur Hauptgericht (ohne Suppe, Salat, Dessert) anzeigen", action="store_true")
+    parser.add_argument("-s", "--short", action="store_true", help="Ausgabe in Kurzform")
+    parser.add_argument("-m", "--maindish", action="store_true",
+                        help="Nur Hauptgericht (ohne Suppe, Salat, Dessert) anzeigen")
     parser.add_argument("filter", nargs="*", help="Menüsorten ausfiltern")
     args = parser.parse_args()
     menu = todaysMenu(args.filter)
