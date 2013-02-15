@@ -63,6 +63,9 @@ def todaysMenu(filters=None):
     if filters is not None and len(filters) > 0:
         filters = [filterConversions[f.lower()] if f in filterConversions else f.lower() for f in filters]
         menu = OrderedDict( (kind, dish) for kind, dish in menu.items() if any(f in kind.lower() for f in filters))
+    for key, value in menu.items():
+        if value[-1] == ".":
+            menu[key] = value[:-1]
     return menu
 
 if __name__ == "__main__":
@@ -70,9 +73,19 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Menü der Mensa Koblenz anzeigen")
     parser.add_argument("-s", "--short", help="Ausgabe in Kurzform", action="store_true")
+    parser.add_argument("-m", "--maindish", help="Nur Hauptgericht (ohne Suppe, Salat, Dessert) anzeigen", action="store_true")
     parser.add_argument("filter", nargs="*", help="Menüsorten ausfiltern")
     args = parser.parse_args()
     menu = todaysMenu(args.filter)
+    if args.maindish:
+        for key, value in menu.items():
+            words = value.split(" ")
+            if "uppe" in words[0]:
+                del words[0]
+            for buzz in "Dessert", "Salat", "und":
+                if words[-1] == buzz:
+                    del words[-1]
+            menu[key] = " ".join(words).strip("., ")
     if not args.short:
         maxNameLength = max(len(kind) for kind in menu)
         for kind, dish in menu.items():
