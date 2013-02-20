@@ -68,6 +68,8 @@ def todaysMenu(filters=None):
             if not any(f in kind.lower() for f in filters):
                 continue
             menu[kind] = dish
+    else:
+        menu = OrderedDict(tableToday)
     return menu
 
 if __name__ == "__main__":
