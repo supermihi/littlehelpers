@@ -40,7 +40,8 @@ def getTable(html, week):
     logging.debug("table class: {}".format(tableClass.format(week)))
     onlyCurrentWeek = SoupStrainer(class_=tableClass.format(week))
     logging.debug("onlyCurrentWeek: {}".format(onlyCurrentWeek))
-    soup = BeautifulSoup(html, parse_only=onlyCurrentWeek).contents[0]
+    soup = BeautifulSoup(html, parse_only=onlyCurrentWeek)
+    soup = soup.find_all("table")[0]
     logging.debug("soup: {}".format(soup))
     logging.debug("soup.contnets[0]: {}".format(soup.contents[0]))
     logging.debug("headers: {}".format(soup.contents[0].contents[1:]))
