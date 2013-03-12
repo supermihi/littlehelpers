@@ -17,6 +17,7 @@ import sys
 import xml.etree.ElementTree as ET
 import logging
 
+import bs4
 from bs4 import BeautifulSoup, SoupStrainer
 
 speiseplanURL="http://www.studierendenwerk-koblenz.de/go/uni-campus-koblenz/essen/speiseplan"
