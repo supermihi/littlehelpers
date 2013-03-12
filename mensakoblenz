@@ -14,11 +14,7 @@ from collections import OrderedDict
 import datetime
 import urllib.request
 import sys
-import xml.etree.ElementTree as ET
-import logging
-
-import bs4
-from bs4 import BeautifulSoup, SoupStrainer
+from html.parser import HTMLParser
 
 speiseplanURL="http://www.studierendenwerk-koblenz.de/go/uni-campus-koblenz/essen/speiseplan"
 tableClass="speiseplan kw kw-{:02d}" # Klasse der Speiseplan-Tabelle; Kalenderwoche als Platzhalter
@@ -28,7 +24,67 @@ def getHTML():
     with urllib.request.urlopen(speiseplanURL) as f:
         html = f.read().decode('utf-8')
     return html
+
+
+class MensaParser(HTMLParser):
+    """Parser für die Speiseplan-Seite der Mensa Koblenz."""
     
+    def __init__(self, tableClass):
+        """Konstruktor. *tableClass* ist das class-Attribut der gesuchten Tabelle."""
+        super().__init__(strict=False)
+        self.tableClass = tableClass
+        self.inTable = self.inTh = self.inTd = self.skippedFirstCol = False
+        self.ths = [] # Spaltenköpfe = vesch. Essensausgaben
+        self.tds = [] # Tabellendaten = Menüs der versch. Tage und Ausgaben
+
+    def handle_starttag(self, tag, attrs):
+        """Handler für öffnende HTML-Tags.
+        
+        Berücksichtigt wird folgendes:
+         - tag "table" und class=self.tableClass: Speiseplan beginnt (setzt self.inTable=True)
+         - tag "th" und self.inTable: setze ggf. self.skippedFirstCol (erste Spalte enthält nur
+           das Datum; für uns nicht relevant), ansonsten setze self.inTh=True
+         - tag "td" und self.inTable: wie bei "th", setzt aber self.inTd=True
+         - tag "tr" und self.inTable: neue Zeile beginnt. Setze self.skippedFirstCol=False und füge
+           neue Liste zu self.tds hinzu (außer in Header-Zeile)
+        """
+        if tag=="table" and ("class", self.tableClass) in attrs:
+            self.inTable = True
+        if self.inTable:
+            if tag=="th":
+                if not self.skippedFirstCol:
+                    self.skippedFirstCol = True
+                    return
+                self.inTh = True
+            elif tag=="td":
+                if not self.skippedFirstCol:
+                    self.skippedFirstCol = True
+                    return
+                self.inTd = True
+            elif tag=="tr":
+                self.skippedFirstCol = False
+                if len(self.ths) > 0:
+                    self.tds.append([])
+    
+    def handle_data(self, data):
+        """Speichert die relevanten Daten in self.ths bzw self.tds."""
+        if self.inTable:
+            if self.inTh:
+                self.ths.append(data)
+            elif self.inTd:
+                self.tds[-1].append(data.strip(". "))
+                
+    def handle_endtag(self, tag):
+        """Handle für schließende HTML-Tags. Setzt ggf. die self.in*-Flags auf False."""
+        if self.inTable:
+            if tag=="table":
+                self.inTable = False
+            elif tag=="th":
+                self.inTh = False
+            elif tag=="td":
+                self.inTd = False
+
+
 def getTable(html, week):
     """Tabelle der angegebenen Woche als Liste von OrderedDicts parsen.
     
@@ -36,22 +92,9 @@ def getTable(html, week):
     Dictionary abbildet. In letzterem wird die Art des Menüs ("Abendmensa", "Menü 1", etc.)
     auf das Menü des entsprechenden Wochentags abgebildet.
     """
-    logging.debug("called getTable() for week {}".format(week))
-    logging.debug("table class: {}".format(tableClass.format(week)))
-    onlyCurrentWeek = SoupStrainer(class_=tableClass.format(week))
-    logging.debug("onlyCurrentWeek: {}".format(onlyCurrentWeek))
-    soup = BeautifulSoup(html, parse_only=onlyCurrentWeek)
-    soup = soup.find_all("table")[0]
-    logging.debug("soup: {}".format(soup))
-    logging.debug("soup.contnets[0]: {}".format(soup.contents[0]))
-    logging.debug("headers: {}".format(soup.contents[0].contents[1:]))
-    headers = [head.text for head in soup.contents[0].contents[1:]] # erste Spalte auslassen (Datum)
-    ans = []
-    for row in soup.contents[1:]:
-        cols = [ col.text.strip(". ") for col in row.contents[1:] ]
-        dct = OrderedDict(zip(headers, cols))
-        ans.append(dct)
-    return ans
+    parser = MensaParser(tableClass.format(week))
+    parser.feed(html)
+    return [OrderedDict(zip(parser.ths, row)) for row in parser.tds]
         
 def currentWeekAndDay():
     """Gibt die aktuelle Kalenderwoche und den Wochentag als Tupel zurück"""
@@ -89,13 +132,8 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--short", action="store_true", help="Ausgabe in Kurzform")
     parser.add_argument("-m", "--maindish", action="store_true",
                         help="Nur Hauptgericht (ohne Suppe, Salat, Dessert) anzeigen")
-    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug output")
     parser.add_argument("filter", nargs="*", help="Menüsorten ausfiltern")
     args = parser.parse_args()
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
-    logging.debug("using python version {}".format(sys.version))
-    logging.debug("using beautifulsoup4, version {}".format(bs4.__version__))
     menu = todaysMenu(args.filter)
     if args.maindish:
         for key, value in menu.items():
