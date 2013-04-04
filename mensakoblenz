@@ -74,7 +74,7 @@ class MensaParser(HTMLParser):
                 self.ths.append(data)
             elif self.inTd:
                 rex = re.compile(r'\s+')
-                self.tds[-1].append(rex.sub(' ', data).strip(". "))
+                self.tds[-1].append(rex.sub(' ', data).replace(" :-)", "").strip(". "))
                 
     def handle_endtag(self, tag):
         """Handle für schließende HTML-Tags. Setzt ggf. die self.in*-Flags auf False."""
