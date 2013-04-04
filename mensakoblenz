@@ -13,6 +13,7 @@
 from collections import OrderedDict
 import datetime
 import urllib.request
+import re
 import sys
 from html.parser import HTMLParser
 
@@ -72,7 +73,8 @@ class MensaParser(HTMLParser):
             if self.inTh:
                 self.ths.append(data)
             elif self.inTd:
-                self.tds[-1].append(data.strip(". "))
+                rex = re.compile(r'\s+')
+                self.tds[-1].append(rex.sub(' ', data).strip(". "))
                 
     def handle_endtag(self, tag):
         """Handle für schließende HTML-Tags. Setzt ggf. die self.in*-Flags auf False."""
