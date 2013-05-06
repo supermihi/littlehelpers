@@ -138,7 +138,9 @@ if __name__ == "__main__":
     parser.add_argument("offset", nargs="?", help="Wochentag ändern, z.B. '+2' (übermorgen), '-1' (gestern)")
     parser.add_argument("filter", nargs="*", help="Filter für Menü-Art (z.B. 'veg', '1', …)")    
     args = parser.parse_args()
-    posargs = args.filter + [args.offset]
+    posargs = args.filter
+    if args.offset:
+        posargs += [args.offset]
     offset = 0
     for i, arg in enumerate(posargs):
         if arg[0] in "+-":
