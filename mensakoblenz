@@ -106,7 +106,7 @@ def currentWeekAndDay():
 extraFilters = { "all" : "", "veggie" : "vegetarisch", "pasta" : "extra"}
 """Eine Liste von Ersetzungstexten für Kommandozeilenparameter."""
 
-def todaysMenu(filters=None):
+def getMenu(filters=None, offset=0):
     """Das heutige Menü; falls *filter* gesetzt ist, nur Menüs der entsprechenden Art.
     
     Gefiltert werden alle Menüarten die den Filter (oder den entsprechenden Ersetzungstext aus
@@ -114,6 +114,7 @@ def todaysMenu(filters=None):
     """
     html = getHTML()
     week, day = currentWeekAndDay()
+    day += offset
     table = getTable(html, week)
     tableToday = table[day]
     if filters is not None and len(filters) > 0:
@@ -134,9 +135,17 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--short", action="store_true", help="Ausgabe in Kurzform")
     parser.add_argument("-m", "--maindish", action="store_true",
                         help="Nur Hauptgericht (ohne Suppe, Salat, Dessert) anzeigen")
-    parser.add_argument("filter", nargs="*", help="Menüsorten ausfiltern")
+    parser.add_argument("offset", nargs="?", help="Wochentag ändern, z.B. '+2' (übermorgen), '-1' (gestern)")
+    parser.add_argument("filter", nargs="*", help="Filter für Menü-Art (z.B. 'veg', '1', …)")    
     args = parser.parse_args()
-    menu = todaysMenu(args.filter)
+    posargs = args.filter + [args.offset]
+    offset = 0
+    for i, arg in enumerate(posargs):
+        if arg[0] in "+-":
+            offset = int(arg)
+            del posargs[i]
+            break
+    menu = getMenu(filters=posargs, offset=offset)
     if args.maindish:
         for key, value in menu.items():
             words = value.split(" ")
