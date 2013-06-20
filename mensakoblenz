@@ -12,113 +12,47 @@
 
 from collections import OrderedDict
 import datetime
-import urllib.request
 import re
 import sys
-from html.parser import HTMLParser
+from lxml import html
 
-speiseplanURL="http://www.studierendenwerk-koblenz.de/go/uni-campus-koblenz/essen/speiseplan"
-tableClass="speiseplan kw kw-{:02d}" # Klasse der Speiseplan-Tabelle; Kalenderwoche als Platzhalter
-
-def getHTML():
-    """Komplette HTML-Seite abrufen."""
-    with urllib.request.urlopen(speiseplanURL) as f:
-        html = f.read().decode('utf-8')
-    return html
+url = "http://www.studierendenwerk-koblenz.de/go/uni-campus-koblenz/essen/speiseplan"
 
 
-class MensaParser(HTMLParser):
-    """Parser für die Speiseplan-Seite der Mensa Koblenz."""
-    
-    def __init__(self, tableClass):
-        """Konstruktor. *tableClass* ist das class-Attribut der gesuchten Tabelle."""
-        super().__init__(strict=False)
-        self.tableClass = tableClass
-        self.inTable = self.inTh = self.inTd = self.skippedFirstCol = False
-        self.ths = [] # Spaltenköpfe = vesch. Essensausgaben
-        self.tds = [] # Tabellendaten = Menüs der versch. Tage und Ausgaben
-
-    def handle_starttag(self, tag, attrs):
-        """Handler für öffnende HTML-Tags.
-        
-        Berücksichtigt wird folgendes:
-         - tag "table" und class=self.tableClass: Speiseplan beginnt (setzt self.inTable=True)
-         - tag "th" und self.inTable: setze ggf. self.skippedFirstCol (erste Spalte enthält nur
-           das Datum; für uns nicht relevant), ansonsten setze self.inTh=True
-         - tag "td" und self.inTable: wie bei "th", setzt aber self.inTd=True
-         - tag "tr" und self.inTable: neue Zeile beginnt. Setze self.skippedFirstCol=False und füge
-           neue Liste zu self.tds hinzu (außer in Header-Zeile)
-        """
-        if tag=="table" and ("class", self.tableClass) in attrs:
-            self.inTable = True
-        if self.inTable:
-            if tag=="th":
-                if not self.skippedFirstCol:
-                    self.skippedFirstCol = True
-                    return
-                self.inTh = True
-            elif tag=="td":
-                if not self.skippedFirstCol:
-                    self.skippedFirstCol = True
-                    return
-                self.inTd = True
-            elif tag=="tr":
-                self.skippedFirstCol = False
-                if len(self.ths) > 0:
-                    self.tds.append([])
-    
-    def handle_data(self, data):
-        """Speichert die relevanten Daten in self.ths bzw self.tds."""
-        if self.inTable:
-            if self.inTh:
-                self.ths.append(data)
-            elif self.inTd:
-                rex = re.compile(r'\s+')
-                self.tds[-1].append(rex.sub(' ', data).replace(" :-)", "").strip(". "))
-                
-    def handle_endtag(self, tag):
-        """Handle für schließende HTML-Tags. Setzt ggf. die self.in*-Flags auf False."""
-        if self.inTable:
-            if tag=="table":
-                self.inTable = False
-            elif tag=="th":
-                self.inTh = False
-            elif tag=="td":
-                self.inTd = False
-
-
-def getTable(html, week):
+def getWeekTable(week):
     """Tabelle der angegebenen Woche als Liste von OrderedDicts parsen.
     
     Gibt eine Liste zurück, die den numerischen Wochentag (0 = Montag) auf ein geordnetes
     Dictionary abbildet. In letzterem wird die Art des Menüs ("Abendmensa", "Menü 1", etc.)
     auf das Menü des entsprechenden Wochentags abgebildet.
     """
-    parser = MensaParser(tableClass.format(week))
-    parser.feed(html)
-    return [OrderedDict(zip(parser.ths, row)) for row in parser.tds]
+    ret = [OrderedDict() for i in range(5)]
+    tbody = html.parse(url).getroot().find_class("kw-{:02d}".format(week))[0].find("tbody")
+    for row, dct in zip(tbody.findall("tr"), ret):
+        for data in row.findall("td"):
+            p = data.find("p")
+            dct[p.text] = p.tail.replace("\r\n", "").replace(":-)", "").strip()
+    return ret
+
         
 def currentWeekAndDay():
     """Gibt die aktuelle Kalenderwoche und den Wochentag als Tupel zurück"""
     today = datetime.date.today()
     return today.isocalendar()[1], today.weekday()
 
-extraFilters = { "all" : "", "veggie" : "vegetarisch", "pasta" : "extra"}
-"""Eine Liste von Ersetzungstexten für Kommandozeilenparameter."""
 
 def getMenu(filters=None, offset=0):
     """Das heutige Menü; falls *filter* gesetzt ist, nur Menüs der entsprechenden Art.
     
-    Gefiltert werden alle Menüarten die den Filter (oder den entsprechenden Ersetzungstext aus
-    *extraFilters* als Teiltext enthalten. Beispiele: "veg", "veggie", "abend", "pasta".
+    Gefiltert werden alle Menüarten die den Filter enthalten.
+    Beispiele: "veg", "abend", "1", "extra".
     """
-    html = getHTML()
     week, day = currentWeekAndDay()
     day += offset
-    table = getTable(html, week)
+    table = getWeekTable(week)
     tableToday = table[day]
     if filters is not None and len(filters) > 0:
-        filters = [extraFilters[f.lower()] if f in extraFilters else f.lower() for f in filters]
+        filters = [f.lower() for f in filters]
         menu = OrderedDict()
         for kind, dish in tableToday.items():
             if not any(f in kind.lower() for f in filters):
@@ -128,8 +62,8 @@ def getMenu(filters=None, offset=0):
         menu = OrderedDict(tableToday)
     return menu
 
+
 if __name__ == "__main__":
-    """Standardverhalten: Gib das heutige Menü aus; eventueller Filter wird aus Argument 1 gelesen."""
     import argparse
     parser = argparse.ArgumentParser(description="Menü der Mensa Koblenz anzeigen")
     parser.add_argument("-s", "--short", action="store_true", help="Ausgabe in Kurzform")
@@ -160,6 +94,6 @@ if __name__ == "__main__":
     if not args.short:
         maxNameLength = max(len(kind) for kind in menu)
         for kind, dish in menu.items():
-            print(('{:' + str(maxNameLength) + 's}: {}').format(kind, dish))
+            print(('{:' + str(maxNameLength+1) + 's}: {}').format(kind, dish))
     else:
         print("; ".join(menu.values()))
