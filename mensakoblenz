@@ -86,12 +86,11 @@ if __name__ == "__main__":
     menu = getMenu(filters=posargs, offset=offset)
     if args.maindish:
         for key, value in menu.items():
-            words = value.split(" ")
+            words = re.split("[\W,]+", value)
             if "uppe" in words[0]:
                 del words[0]
-            for buzz in "Dessert", "Salat", "und":
-                if words[-1] == buzz:
-                    del words[-1]
+            while words[-1] in ("Dessert", "Salat", "und", "dazu"):
+                del words[-1]
             menu[key] = " ".join(words).strip("., ")
     if not args.short:
         maxNameLength = max(len(kind) for kind in menu)
