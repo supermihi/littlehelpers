@@ -27,11 +27,13 @@ def getWeekTable(week):
     auf das Menü des entsprechenden Wochentags abgebildet.
     """
     ret = [OrderedDict() for i in range(5)]
-    tbody = html.parse(url).getroot().find_class("kw-{:02d}".format(week))[0].find("tbody")
-    for row, dct in zip(tbody.findall("tr"), ret):
+    table = html.parse(url).getroot().find_class("kw-{:02d}".format(week))[0]
+    body = table.find("tbody")
+    head = table.find("thead")
+    for row, dct in zip(body.findall("tr"), ret):
         for data in row.findall("td"):
-            p = data.find("p")
-            dct[p.text] = p.tail.replace("\r\n", "").replace(":-)", "").strip()
+            headerId = data.get("headers").split(" ", 1)[1]
+            dct[head.get_element_by_id(headerId).text] = data.text.replace("\r\n", "").replace(":-)", "").strip()
     return ret
 
         
