@@ -308,6 +308,11 @@ def do_backup(profile):
             print(_("Error backing up {0}, rsync faild with {1}").format(path,rse.what))
             input()
   
+    # now we are done -- store last success time
+    now = datetime.datetime.now()
+    last =  now.strftime(DATE_FORMAT)
+    with open(os.path.join(confdir, ".last_backup_" + profile), 'w') as lastout:
+        lastout.write(last)
     if need_mount:
         command = ["umount.crypt" if umount_crypt else "umount"]
         if mount_sudo:
@@ -316,20 +321,12 @@ def do_backup(profile):
             subprocess.check_call(command + [mountpoint])
         except:
             print(_("WARNING: Failed to unmount device."))
-            if not need_decrypt:
-                return 27
     if need_decrypt:
         try:
             subprocess.check_call(["sudo", "cryptdisks_stop", profopts["crypttab_name"]])
         except:
             print(_("WARNING: Faild to close encrypted device. THIS IS A SECURITY RISK, PLEASE TAKE CARE OF THAT!!!"))
             interact()
-            return 29
-    # now we are done -- store last success time
-    now = datetime.datetime.now()
-    last =  now.strftime(DATE_FORMAT)
-    with open(os.path.join(confdir, ".last_backup_" + profile), 'w') as lastout:
-        lastout.write(last)
     if profopts["device"]:
         print("Now, please remember to turn off the device".format(profile))
     if backup_errors > 0:
