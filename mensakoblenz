@@ -8,12 +8,10 @@
 #
 # mensakoblenz - Skript zur Textausgabe des aktuellen Tagesmenüs in der
 # Mensa der Uni Koblenz.
- 
+
 
 from collections import OrderedDict
-import datetime
-import re
-import sys
+import datetime, re, sys
 from lxml import html
 
 url = "http://www.studierendenwerk-koblenz.de/go/uni-campus-koblenz/essen/speiseplan"
@@ -33,24 +31,20 @@ def getWeekTable(week):
     for row, dct in zip(body.findall("tr"), ret):
         for data in row.findall("td"):
             headerId = data.get("headers").split(" ", 1)[1]
-            dct[head.get_element_by_id(headerId).text] = data.text.replace("\r\n", "").replace(":-)", "").strip()
+            if "geschlossen" in data.text.lower():
+                continue
+            dct[head.get_element_by_id(headerId).text] = \
+                    data.text.replace("\r\n", "").replace(":-)", "").strip()
     return ret
-
-        
-def currentWeekAndDay():
-    """Gibt die aktuelle Kalenderwoche und den Wochentag als Tupel zurück"""
-    today = datetime.date.today()
-    return today.isocalendar()[1], today.weekday()
 
 
 def getMenu(filters=None, offset=0):
     """Das heutige Menü; falls *filter* gesetzt ist, nur Menüs der entsprechenden Art.
     
     Gefiltert werden alle Menüarten die den Filter enthalten.
-    Beispiele: "veg", "abend", "1", "extra".
     """
-    week, day = currentWeekAndDay()
-    day += offset
+    date = datetime.date.today() + datetime.timedelta(days=offset)
+    week, day = date.isocalendar()[1], date.weekday()
     table = getWeekTable(week)
     tableToday = table[day]
     if filters is not None and len(filters) > 0:
@@ -67,12 +61,13 @@ def getMenu(filters=None, offset=0):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Menü der Mensa Koblenz anzeigen")
+    parser = argparse.ArgumentParser(description="Mensa-Menü der Uni Koblenz anzeigen")
     parser.add_argument("-s", "--short", action="store_true", help="Ausgabe in Kurzform")
     parser.add_argument("-m", "--maindish", action="store_true",
                         help="Nur Hauptgericht (ohne Suppe, Salat, Dessert) anzeigen")
-    parser.add_argument("offset", nargs="?", help="Wochentag ändern, z.B. '+2' (übermorgen), '-1' (gestern)")
-    parser.add_argument("filter", nargs="*", help="Filter für Menü-Art (z.B. 'veg', '1', …)")    
+    parser.add_argument("offset", nargs="?", metavar="+/-n",
+                        help="Tag ändern, z.B. '+7' (in einer Woche), '-1' (gestern)")
+    parser.add_argument("filter", nargs="*", help="Filter für Menü-Art (z.B. 'veg', '1', …)")
     args = parser.parse_args()
     posargs = args.filter
     if args.offset:
@@ -83,13 +78,17 @@ if __name__ == "__main__":
             offset = int(arg)
             del posargs[i]
             break
-    menu = getMenu(filters=posargs, offset=offset)
+    try:
+        menu = getMenu(filters=posargs, offset=offset)
+    except IndexError:
+        print("Kein Menü gefunden. Ist schon Wochenende?")
+        sys.exit(1)
     if args.maindish:
         for key, value in menu.items():
             words = re.split("[\W,]+", value)
             if "uppe" in words[0]:
                 del words[0]
-            while words[-1] in ("Dessert", "Salat", "und", "dazu"):
+            while words[-1] in ("Dessert", "Salat", "mit", "und", "dazu"):
                 del words[-1]
             menu[key] = " ".join(words).strip("., ")
     if not args.short:
@@ -97,4 +96,4 @@ if __name__ == "__main__":
         for kind, dish in menu.items():
             print(('{:' + str(maxNameLength+1) + 's}: {}').format(kind, dish))
     else:
-        print("; ".join(menu.values()))
+        print(" • ".join(menu.values()))
