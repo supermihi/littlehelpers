@@ -1,0 +1,60 @@
+#!/usr/bin/python3
+
+# Script to check whether repositories are in a clean state, i.e. no local
+# modifications and no newer version upstream.
+#
+# List of repositories is read from $XDG_CONFIG_HOME/repocheck
+
+import os, subprocess, sys
+from os.path import join, expanduser, expandvars, isdir
+
+
+def checkRepository(path, fetch=False):
+    if os.path.isdir(join(path, '.git')):
+        return checkGit(path, fetch)
+    elif os.path.exists(join(path, '.svn')):
+        return checkSubversion(path, fetch)
+    else:
+        raise ValueError('Unknown repository type: {}'.format(path))
+        
+
+def checkSubversion(path, fetch=False):
+    # check local modifications
+    output = subprocess.check_output(['svn', 'status', '-q'], cwd=path)
+    if output != b"":
+        return False
+    elif fetch:
+        langCEnv = os.environ.copy()
+        langCEnv['LANG'] = 'C'
+        outputRemote = subprocess.check_output(['svn', 'info', '-r', 'HEAD'], cwd=path, env=langCEnv)
+        outputLocal = subprocess.check_output(['svn', 'info'], cwd=path, env=langCEnv)
+        def revLine(out):
+            for line in out.splitlines():
+                if line.startswith(b'Last Changed Rev: '):
+                    return line
+        if revLine(outputRemote) != revLine(outputLocal):
+            return False
+    return True
+    
+def checkGit(path, fetch=False):
+    if fetch:
+        subprocess.check_call(['git', 'fetch'], cwd=path)
+    output = subprocess.check_output(['git', 'diff', 'origin/master'], cwd=path)
+    return output == b""
+    
+        
+if __name__ == "__main__":
+    XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", expandvars("$HOME/.config"))
+    configfile = join(XDG_CONFIG_HOME, 'repocheck')
+    repos = []
+    with open(configfile, 'rt') as f:
+        for line in f:
+            repos.append(expanduser(line[:-1]))
+    fetch = len(sys.argv) > 1 and sys.argv[1] == "fetch"
+    unclean = []
+    for repo in repos:
+        if not checkRepository(repo, fetch):
+            unclean.append(repo)
+    if len(unclean):
+        print('Unclean repos: \n{}'.format('\n'.join(unclean)))
+
