@@ -47,7 +47,7 @@ def checkGit(path, fetch=False):
 def checkMercurial(path, fetch=False):
     if fetch:
         subprocess.check_call(['hg', 'pull'], cwd=path)
-    return subprocess.check_output(['hg', 'diff', '-r', 'tip']) == b''
+    return subprocess.check_output(['hg', 'diff', '-r', 'tip'], cwd=path) == b''
         
 if __name__ == "__main__":
     XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", expandvars("$HOME/.config"))
@@ -59,8 +59,12 @@ if __name__ == "__main__":
     fetch = len(sys.argv) > 1 and sys.argv[1] == "fetch"
     unclean = []
     for repo in repos:
-        if not checkRepository(repo, fetch):
-            unclean.append(repo)
+        try:
+            if not checkRepository(repo, fetch):
+                unclean.append(repo)
+        except Exception as e:
+            print('ERROR checking repository at {}'.format(repo))
+            print(e)
     if len(unclean):
         print('Unclean repos: \n{}'.format('\n'.join(unclean)))
 
