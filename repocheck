@@ -12,8 +12,10 @@ from os.path import join, expanduser, expandvars, isdir
 def checkRepository(path, fetch=False):
     if os.path.isdir(join(path, '.git')):
         return checkGit(path, fetch)
-    elif os.path.exists(join(path, '.svn')):
+    elif os.path.isdir(join(path, '.svn')):
         return checkSubversion(path, fetch)
+    elif os.path.isdir(join(path, '.hg')):
+        return checkMercurial(path, fetch)
     else:
         raise ValueError('Unknown repository type: {}'.format(path))
         
@@ -41,7 +43,11 @@ def checkGit(path, fetch=False):
         subprocess.check_call(['git', 'fetch'], cwd=path)
     output = subprocess.check_output(['git', 'diff', 'origin/master'], cwd=path)
     return output == b""
-    
+
+def checkMercurial(path, fetch=False):
+    if fetch:
+        subprocess.check_call(['hg', 'pull'], cwd=path)
+    return subprocess.check_output(['hg', 'diff', '-r', 'tip']) == b''
         
 if __name__ == "__main__":
     XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", expandvars("$HOME/.config"))
