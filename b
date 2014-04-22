@@ -17,7 +17,9 @@ _ = gettext.gettext
 confdir = os.path.expanduser("~/.b") # where we look for configuration files
 DATE_FORMAT = "%Y-%m-%d %H.%M" # date format used in config files – don't change ;)
 RSYNC_CMD = "rsync"
-RSYNC_DEFAULT_ARGS =    ["--exclude=lost+found", "--delete", "--delete-excluded", "--ignore-errors", "-v", "-a", "-x", "-H", "-P"]
+RSYNC_DEFAULT_ARGS = ["--exclude=lost+found", "--delete", "--delete-excluded", "--ignore-errors",
+    "--verbose", "--recursive", "--links", "--perms", "--times", "--group", "--owner",
+    "--one-file-system", "--hard-links", "--partial", "--progress"]
 PROFILE_CONF_PATH = os.path.join(confdir, "profiles") # main config file where profiles are defined
 PATH_CONF_PATH = os.path.join(confdir, "paths") # config file for the paths
 DEFAULT_INTERVAL = 12
