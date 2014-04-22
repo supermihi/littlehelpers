@@ -46,13 +46,13 @@ def encoder(name):
                 except:
                     pass
                 finally:
-                    print("\nThread {0} returned.".format(name))
+                    print("\nThread {0} returned".format(name))
                     return
             else:
                 errorFiles.append(source)
         else:
             filesencoded = filesencoded + 1
-            print("\nThread {0} Successfully encoded {1}.".format(name,os.path.basename(target)))
+            print("\nThread {0} Successfully encoded {1}".format(name,os.path.basename(target)))
             oggsize = oggsize + os.path.getsize(target)
             flacsize = flacsize + os.path.getsize(source)
         encodingJobs.task_done()
@@ -93,8 +93,6 @@ for dirpath, dirnames, files in os.walk(sourcepath):
             bla = len(ostring)
             print(ostring,end='')
             os.mkdir(targetsubdir)
-            #time.sleep(0.1)
-            sys.stdout.flush()
                 
 sys.stdout.write("\r" + " "*bla)    
 print("\rDone creating directories.")
@@ -103,9 +101,7 @@ print("\rDone creating directories.")
 for dirpath, dirnames, files in os.walk(targetpath, topdown=False):
     dirInSource = os.path.join(sourcepath,os.path.relpath(dirpath,targetpath))
     if not os.path.exists(dirInSource):
-        print("removing directory {}".format(dirpath))
         shutil.rmtree(dirpath)
-        print('does not exist: {}'.format(dirInSource))
         continue
     for file in files:
         if os.path.exists(os.path.join(dirInSource,file)):
