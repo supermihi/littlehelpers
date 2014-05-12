@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os, os.path
+from os.path import join, expanduser
 import sys
 import subprocess
 import configparser
@@ -11,36 +12,37 @@ import time
 import copy
 import readline
 
-_ = gettext.gettext
 
 # -------- "almost constant" program parameters
-confdir = os.path.expanduser("~/.b") # where we look for configuration files
+confdir = expanduser("~/.b") # where we look for configuration files
 DATE_FORMAT = "%Y-%m-%d %H.%M" # date format used in config files – don't change ;)
 RSYNC_CMD = "rsync"
-RSYNC_DEFAULT_ARGS = ["--exclude=lost+found", "--delete", "--delete-excluded", "--ignore-errors",
-    "--verbose", "--recursive", "--links", "--perms", "--times", "--group", "--owner",
-    "--one-file-system", "--hard-links", "--partial", "--progress"]
-PROFILE_CONF_PATH = os.path.join(confdir, "profiles") # main config file where profiles are defined
-PATH_CONF_PATH = os.path.join(confdir, "paths") # config file for the paths
+RSYNC_DEFAULT_ARGS = ["--exclude=lost+found",
+                      "--delete",
+                      "--delete-excluded",
+                      "--ignore-errors",
+                      "--verbose",
+                      "--recursive",
+                      "--links",
+                      "--perms",
+                      "--times",
+                      "--group",
+                      "--owner",
+                      "--one-file-system",
+                      "--hard-links",
+                      "--partial",
+                      "--progress"]
+PROFILE_CONF_PATH = join(confdir, "profiles") # main config file where profiles are defined
+PATH_CONF_PATH = join(confdir, "paths") # config file for the paths
 DEFAULT_INTERVAL = 12
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 class Options:
     def __init__(self):
         self.interactivity="delay"
         self.interactivity_delay=2
-        self.motzmessage=_(
-            "******************************* WARNUNG ********************************\n" +  
-            "************************************************************************\n" +
-            "** Echt, du Spast .... könntest mal wieder was für deine\n" +
-            '** Datensicherheit tun! Das Backup-Profil "{profile}" wurde seit\n' +
-            "** sage und schreibe !!!{last}!!! Tagen nicht mehr gesichert;\n" + 
-            "** dabei ist das geforderte Intervall für dieses Profil auf\n" +
-            "** !!!{interval}!!! Tage gesetzt.\n" + 
-            "** ZOMGGG!!!!111111einseinself Möge das Höllenfeuer sofort\n" + 
-            "** deine Festplatten fressen.\n" + 
-            "************************************************************************\n" + 
-            "************************************************************************")
+        self.motzmessage=('\033[31;1mbackup profile "{profile}" unsaved since {last} days ('
+                          'selected interval is {interval})\033[0m')
         self.profile_default = {
             "device":None,
             "crypttab_name":None,
@@ -73,7 +75,7 @@ class Options:
             for option in parser.options(profile):
                 if not option in self.profile_default:
                     # option in config file that is not understood by this program
-                    print(_("WARNING: The option '{0}' in {1} is not a valid profile option.").format(option, PROFILE_CONF_PATH))
+                    print("WARNING: The option '{0}' in {1} is not a valid profile option.".format(option, PROFILE_CONF_PATH))
                 
                 parser_option = parser.get(profile,option)
                 if option in ["device", "crypttab_name", "mountpoint", "target", "mount_sudo", "umount_crypt", "rsync_opts"]: # string options -- just copy
@@ -94,7 +96,7 @@ class Options:
             self.paths[path] = copy.copy(self.path_default)
             for option in parser.options(path):
                 if not option in self.path_default:
-                    print(_("WARNING: The option '{0}' in {1} is not a valid path option.").format(option, PATH_CONF_PATH))
+                    print("WARNING: The option '{0}' in {1} is not a valid path option.".format(option, PATH_CONF_PATH))
 
                 if option in ["source", "dest"]:
                     self.paths[path][option] = os.path.expanduser(os.path.expandvars(parser.get(path,option)))
@@ -124,9 +126,9 @@ def interact():
     mode = options.interactivity
     delay = options.interactivity_delay
     if mode=="confirm":
-        input(_("Press 'Enter' to continue..."))
+        input("Press 'Enter' to continue...")
     elif mode=="delay":
-        print(_("Waiting {0} seconds to continue...").format(str(delay)), end='')
+        print("Waiting {0} seconds to continue...".format(str(delay)), end='')
         try:
             for secs in reversed(range(1,delay)):
                 sys.stdout.flush()
@@ -134,7 +136,7 @@ def interact():
                 print(str(secs) + "...",end='')
                 sys.stdout.flush()
         except KeyboardInterrupt:
-            print(_("Aborting delay due to keyboard interrupt"))
+            print("Aborting delay due to keyboard interrupt")
         print()
     else: # just go on
         pass
@@ -212,7 +214,7 @@ def do_path(profile, path, target_base):
         try:
             os.makedirs(dest)
         except OSError as e:
-            raise RsyncRunException(_("Target directory does not exist and cannot create it: {0}").format(str(e)))
+            raise RsyncRunException("Target directory does not exist and cannot create it: {0}".format(str(e)))
     rsync_opts = RSYNC_DEFAULT_ARGS
     if options.profiles[profile]["rsync_opts"] != "":
         rsync_opts.append(options.profiles[profile]["rsync_opts"])
@@ -223,8 +225,8 @@ def do_path(profile, path, target_base):
         # tricky part: keep several hardlinked versions
         versions = pathopts["versions"]
         if versions < 1:
-            print(_("nasty bastard"))
-            raise ValueError(_("<1 versions requested, check your config file"))
+            print("nasty bastard")
+            raise ValueError("<1 versions requested, check your config file")
         existing_versions = []
         for existing_subdir in os.listdir(dest):
             if not os.path.isdir(os.path.join(dest,existing_subdir)):
@@ -233,7 +235,7 @@ def do_path(profile, path, target_base):
                 date = datetime.datetime.strptime(existing_subdir, DATE_FORMAT)
                 existing_versions.append(date)
             except ValueError:
-                print(_("There is a subdir in the backup path that's not a backup: {0}").format(existing_subdir))
+                print("There is a subdir in the backup path that's not a backup: {0}".format(existing_subdir))
                 continue # dirty subdir
         existing_versions.sort() #earliest first
         for oldversion in existing_versions[:-versions+1]: #delete old backups
@@ -241,7 +243,7 @@ def do_path(profile, path, target_base):
             rm_cmd = "rm -rf '{0}'".format(os.path.join(dest,oldversion.strftime(DATE_FORMAT)).replace("'","\'"))
             if pathopts["sudo"]:
                 rm_cmd = "sudo " + rm_cmd
-            print(_("Executing command {0}").format(rm_cmd))
+            print("Executing command {0}".format(rm_cmd))
             os.system(rm_cmd)
         for linkversion in existing_versions[-versions+1:]:
             rsync_opts.append("--link-dest="+os.path.join(dest,linkversion.strftime(DATE_FORMAT)))
@@ -251,17 +253,17 @@ def do_path(profile, path, target_base):
     command = [RSYNC_CMD] + rsync_opts +  [source + "/", fulldest + "/"]
     if pathopts["sudo"]:
         command[:0] = ["sudo"]
-    print(_("I will now execute this command: \n") + " ".join(command))
+    print("I will now execute this command: \n" + " ".join(command))
     interact()
     try:
         rsync_proc = subprocess.Popen(command, stderr=subprocess.PIPE)
         stdout, stderr = rsync_proc.communicate()
     except KeyboardInterrupt:
-        raise RsyncRunException(_("Rsync interrupted by Keyboard"))
+        raise RsyncRunException("Rsync interrupted by Keyboard")
     except OSError as e:
-        raise RsyncRunException(_("Problem calling rsync: {0}").format(str(e)))
+        raise RsyncRunException("Problem calling rsync: {0}".format(str(e)))
     if rsync_proc.returncode != 0:
-        raise RsyncRunException(_("Rsync exited with non-zero return code:\n\n{0}").format(stderr.decode('utf8')))
+        raise RsyncRunException("Rsync exited with non-zero return code:\n\n{0}".format(stderr.decode('utf8')))
 # ~~~~~~ END do_path(path, target_base) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def find_profile():
@@ -272,7 +274,7 @@ def find_profile():
         if options.profiles[p]["device"] and os.path.exists(options.profiles[p]["device"]):
             return p
     if profile=="":
-        print(_("Did not find any backup device. You have to choose a profile manually."))
+        print("Did not find any backup device. You have to choose a profile manually.")
         return None
 
 def do_backup(profile):
@@ -288,7 +290,7 @@ def do_backup(profile):
             print('executing: "sudo cryptdisks_start {}"'.format(profopts["crypttab_name"]))
             subprocess.check_call(["sudo", "cryptdisks_start", profopts["crypttab_name"]])
         except subprocess.CalledProcessError:
-            print(_("Unable to decrypt device."))
+            print("Unable to decrypt device.")
             return 17
     if need_mount:
         mountpoint = profopts["mountpoint"]
@@ -296,7 +298,7 @@ def do_backup(profile):
         try:
             mount(mountpoint, mount_sudo)
         except subprocess.CalledProcessError:
-            print(_("Unable to mount device."))
+            print("Unable to mount device.")
             return 19
     else:
         target_base = profopts["target"]
@@ -307,7 +309,7 @@ def do_backup(profile):
             print("path {} finished successful".format(path))
         except RsyncRunException as rse:
             backup_errors = backup_errors + 1
-            print(_("Error backing up {0}, rsync faild with {1}").format(path,rse.what))
+            print("Error backing up {0}, rsync faild with {1}".format(path,rse.what))
             input()
   
     # now we are done -- store last success time
@@ -322,17 +324,17 @@ def do_backup(profile):
         try:
             subprocess.check_call(command + [mountpoint])
         except:
-            print(_("WARNING: Failed to unmount device."))
+            print("WARNING: Failed to unmount device.")
     if need_decrypt:
         try:
             subprocess.check_call(["sudo", "cryptdisks_stop", profopts["crypttab_name"]])
         except:
-            print(_("WARNING: Faild to close encrypted device. THIS IS A SECURITY RISK, PLEASE TAKE CARE OF THAT!!!"))
+            print("WARNING: Faild to close encrypted device. THIS IS A SECURITY RISK, PLEASE TAKE CARE OF THAT!!!")
             interact()
     if profopts["device"]:
         print("Now, please remember to turn off the device".format(profile))
     if backup_errors > 0:
-        print(_("There were {0} errors during the backup. Please check this!").format(backup_errors))
+        print("There were {0} errors during the backup. Please check this!".format(backup_errors))
         return 1
 # ~~~~~~ END do_backup(profile) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
