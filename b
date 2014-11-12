@@ -217,7 +217,7 @@ def do_path(profile, path, target_base):
             raise RsyncRunException("Target directory does not exist and cannot create it: {0}".format(str(e)))
     rsync_opts = RSYNC_DEFAULT_ARGS
     if options.profiles[profile]["rsync_opts"] != "":
-        rsync_opts.append(options.profiles[profile]["rsync_opts"])
+        rsync_opts.extend(options.profiles[profile]["rsync_opts"].split())
     excludes = get_excludes(path)
     for excludefile in excludes:
         rsync_opts.append("--exclude-from=" + excludefile)
