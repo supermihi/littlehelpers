@@ -13,6 +13,13 @@ import copy
 import readline
 
 
+def yesNoQuestion(title, text):
+    ans = subprocess.call(['zenity', '--question', '--title', title, '--text', text])
+    return ans == 0
+
+def warning(title, text):
+    subprocess.check_call(['zenity', '--warning', '--title', title, '--text', text])
+
 # -------- "almost constant" program parameters
 confdir = expanduser("~/.b") # where we look for configuration files
 DATE_FORMAT = "%Y-%m-%d %H.%M" # date format used in config files – don't change ;)
@@ -39,10 +46,8 @@ DEFAULT_INTERVAL = 12
 
 class Options:
     def __init__(self):
-        self.interactivity="delay"
-        self.interactivity_delay=2
-        self.motzmessage=('\033[31;1mbackup profile "{profile}" unsaved since {last} days ('
-                          'selected interval is {interval})\033[0m')
+        self.motzmessage=('Backup profile "{profile}" not completed since {last} days ('
+                          'target interval is {interval} days)')
         self.profile_default = {
             "device":None,
             "crypttab_name":None,
@@ -122,55 +127,22 @@ options.read_paths()
 profiles = options.profiles.keys()
 
 def interact():
-    """According to the interactivity option, wait for confirmation, do a time delay or just display the message."""
-    mode = options.interactivity
-    delay = options.interactivity_delay
-    if mode=="confirm":
-        input("Press 'Enter' to continue...")
-    elif mode=="delay":
-        print("Waiting {0} seconds to continue...".format(str(delay)), end='')
-        try:
-            for secs in reversed(range(1,delay)):
-                sys.stdout.flush()
-                time.sleep(1)
-                print(str(secs) + "...",end='')
-                sys.stdout.flush()
-        except KeyboardInterrupt:
-            print("Aborting delay due to keyboard interrupt")
-        print()
-    else: # just go on
-        pass
-# ~~~~~~ END interact() ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    input("Press 'Enter' to continue...")
 
-def check(oneLine = False):
+
+def check():
     """Checks for profiles that are 'over time', prints a warning message for each of such."""
-    msgs = []
     for pname,profile in options.profiles.items():
-        if profile["device"] and os.path.exists(profile["device"]):
-            if not oneLine:
-                print("CAUTION: device {} is available for backup.".format(pname))
-                ans = input("Do you want to start a backup? [Y/n] ")
-                if ans in ( "y", "Y", ""):
-                    do_backup(pname)
-            else:
-                msgs.append("Backup-dev {} available".format(pname))
-                
         last = profile["last"]
         maxinterval = profile["interval"]
         now = datetime.datetime.now()
         if (now - last) > maxinterval:
-            if oneLine:
-                msgs.append("BACKUP {} OUTDATED: {} DAYS".format(pname, (now-last).days))
+            msg = options.motzmessage.format(profile=pname, last=(now - last).days, interval=maxinterval.days)
+            if not profile["device"] or os.path.exists(profile['device']):
+                if yesNoQuestion('Backup outdated', msg + '\nStart now?'):
+                    do_backup(pname)
             else:
-                print(options.motzmessage.format(profile = pname, last = (now - last).days, interval = maxinterval.days))
-                sys.stdout.flush()
-                if not profile["device"]:
-                    ans = input("could start now -- ok? [Y/n] ")
-                    if ans in ("y", "Y", ""):
-                        do_backup(pname)
-    if oneLine:
-        print("; ".join(msgs))
-                
+                warning('Backup outdated', msg)
             
 # ~~~~~~ END check() ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -253,8 +225,7 @@ def do_path(profile, path, target_base):
     command = [RSYNC_CMD] + rsync_opts +  [source + "/", fulldest + "/"]
     if pathopts["sudo"]:
         command[:0] = ["sudo"]
-    print("I will now execute this command: \n" + " ".join(command))
-    interact()
+    print("Executing command: \n" + " ".join(command))
     try:
         rsync_proc = subprocess.Popen(command, stderr=subprocess.PIPE)
         stdout, stderr = rsync_proc.communicate()
@@ -339,11 +310,8 @@ def do_backup(profile):
 # ~~~~~~ END do_backup(profile) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1][:5] == "check":
-        if sys.argv[1] == "check":
-            check()
-        elif sys.argv[1] == "check1":
-            check(True)
+    if len(sys.argv) > 1 and sys.argv[1] == "check":
+        check()
     else:
         if len(sys.argv) > 1:
             profile = sys.argv[1]
