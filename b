@@ -1,28 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os, os.path
-from os.path import join, expanduser
+import os
+from os.path import join, expanduser, exists, expandvars, getmtime, isdir
 import sys
 import subprocess
 import configparser
 import datetime
-import gettext
-import time
-import copy
-import readline
 
-
-def yesNoQuestion(title, text):
-    ans = subprocess.call(['zenity', '--question', '--title', title, '--text', text])
-    return ans == 0
-
-def warning(title, text):
-    subprocess.check_call(['zenity', '--warning', '--title', title, '--text', text])
-
-# -------- "almost constant" program parameters
-confdir = expanduser("~/.b") # where we look for configuration files
-DATE_FORMAT = "%Y-%m-%d %H.%M" # date format used in config files – don't change ;)
+DATE_FORMAT = "%Y-%m-%d %H.%M"  # date format used in config files – don't change ;)
 RSYNC_CMD = "rsync"
 RSYNC_DEFAULT_ARGS = ["--exclude=lost+found",
                       "--delete",
@@ -39,284 +25,298 @@ RSYNC_DEFAULT_ARGS = ["--exclude=lost+found",
                       "--hard-links",
                       "--partial",
                       "--progress"]
-PROFILE_CONF_PATH = join(confdir, "profiles") # main config file where profiles are defined
-PATH_CONF_PATH = join(confdir, "paths") # config file for the paths
 DEFAULT_INTERVAL = 12
+WARNING_MESSAGE = ('Backup profile "{profile}" was last completed {last} ('
+                   'configured interval is {interval} days)')
 
 
-class Options:
-    def __init__(self):
-        self.motzmessage=('Backup profile "{profile}" not completed since {last} days ('
-                          'target interval is {interval} days)')
-        self.profile_default = {
-            "device":None,
-            "crypttab_name":None,
-            "mountpoint":None,
-            "paths":[],
-            "last":datetime.datetime.min,
-            "interval":datetime.timedelta(days=DEFAULT_INTERVAL),
-            "target":"",
-            "mount_sudo":None,
-            "umount_crypt":False,
-            "rsync_opts":""
-        }
-        
-        self.profiles = {}
-        
-        self.path_default = {
-            "source":None,
-            "dest":"",
-            "inherit_excludes":None,
-            "sudo":False,
-            "versions":None
-        }
-        
-        self.paths = {}
-    def read_profiles(self):
-        parser = configparser.ConfigParser()
-        parser.read(PROFILE_CONF_PATH)
-        for profile in parser.sections():
-            self.profiles[profile] = copy.copy(self.profile_default)
-            for option in parser.options(profile):
-                if not option in self.profile_default:
-                    # option in config file that is not understood by this program
-                    print("WARNING: The option '{0}' in {1} is not a valid profile option.".format(option, PROFILE_CONF_PATH))
-                
-                parser_option = parser.get(profile,option)
-                if option in ["device", "crypttab_name", "mountpoint", "target", "mount_sudo", "umount_crypt", "rsync_opts"]: # string options -- just copy
-                    self.profiles[profile][option] = parser_option
-                elif option in ["paths"]: # list options, separated by comma
-                    self.profiles[profile][option] = parser_option.split(',')
-                elif option in ["interval"]: # time interval options
-                    self.profiles[profile][option] = datetime.timedelta(days = int(parser_option))
-            if os.path.exists(os.path.join(confdir, ".last_backup_" + profile)):
-                with open(os.path.join(confdir, ".last_backup_" + profile)) as lastfile:
-                    string = lastfile.read().strip()
-                    self.profiles[profile]["last"] = datetime.datetime.strptime(string, DATE_FORMAT)
-            
-    def read_paths(self):
-        parser = configparser.ConfigParser()
-        parser.read(PATH_CONF_PATH)
-        for path in parser.sections():
-            self.paths[path] = copy.copy(self.path_default)
-            for option in parser.options(path):
-                if not option in self.path_default:
-                    print("WARNING: The option '{0}' in {1} is not a valid path option.".format(option, PATH_CONF_PATH))
+def yesNoQuestion(title, text):
+    """Displays a yes-no question"""
+    ans = subprocess.call(['zenity', '--question', '--title', title, '--text', text])
+    return ans == 0
 
-                if option in ["source", "dest"]:
-                    self.paths[path][option] = os.path.expanduser(os.path.expandvars(parser.get(path,option)))
-                elif option == "inherit_excludes": # string options
-                    self.paths[path][option] = parser.get(path,option)
-                elif option in ["sudo"]:
-                    self.paths[path][option] = parser.getboolean(path,option)
-                elif option in ["versions"]:
-                    self.paths[path][option] = parser.getint(path,option)
-# ~~~~~~ END class Options ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def warning(title, text):
+    """Displays a warning"""
+    subprocess.check_call(['zenity', '--warning', '--title', title, '--text', text])
+
 
 class RsyncRunException(Exception):
-    def __init__(self, what):
-        self.what = what
-    
-    def __str__(self):
-        return self.what
+    pass
 
-# --- global stuff, should be moved in some class some day
-options = Options()
-options.read_profiles()
-options.read_paths()
-profiles = options.profiles.keys()
 
 def interact():
     input("Press 'Enter' to continue...")
 
 
-def check():
-    """Checks for profiles that are 'over time', prints a warning message for each of such."""
-    for pname,profile in options.profiles.items():
-        last = profile["last"]
-        maxinterval = profile["interval"]
-        now = datetime.datetime.now()
-        if (now - last) > maxinterval:
-            msg = options.motzmessage.format(profile=pname, last=(now - last).days, interval=maxinterval.days)
-            if not profile["device"] or os.path.exists(profile['device']):
-                if yesNoQuestion('Backup outdated', msg + '\nStart now?'):
-                    do_backup(pname)
-            else:
-                warning('Backup outdated', msg)
-            
-# ~~~~~~ END check() ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class Profile:
 
-def mount(mountpoint, sudo = False):
-    """Mounts the given mountpoint, if it isn't mounted already."""
-    
-    # check if already mounted
-    with open("/etc/mtab") as mtab:
-        for line in mtab:
-            mp = line.split()[1].replace("\\040", " ") # spaces are encoded in mtab to preserve the formatting
-            if mp == mountpoint:
-                print("Filesystem already mounted.")
-                return
-    # need to mount
-    if sudo:
-        print('executing: "sudo mount {}"'.format(mountpoint))
-        subprocess.check_call(["sudo", "mount", mountpoint])
-    else:
-        print('executing: "mount {}"'.format(mountpoint))
-        subprocess.check_call(["mount", mountpoint])
-# ~~~~~~ END mount(mountpoint) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __init__(self, confpath, name, section):
+        self.name = name
+        self.confpath = confpath
+        self.device = section.get('device', None)
+        self.crypttab_name = section.get('crypttab_name', None)
+        self.mountpoint = section.get('mountpoint', None)
+        self.target = section.get('target', '')
+        self.mount_sudo = section.getboolean('mount_sudo', False)
+        self.umount_crypt = section.getboolean('umount_crypt', False)
+        self.rsync_opts = RSYNC_DEFAULT_ARGS[:]
+        if 'rsync_opts' in section:
+            self.rsync_opts.extend(section['rsync_opts'].split())
+        if 'paths' in section:
+            self.paths = section['paths'].split(',')
+        else:
+            self.paths = []
+        self.interval = datetime.timedelta(days=section.getint('interval', DEFAULT_INTERVAL))
 
-def get_excludes(path):
-    """Returns a list of excludes for the given path, that is, the direct ones plus all inherited."""
-    if options.paths[path]["inherit_excludes"]:
-        excludes = get_excludes(options.paths[path]["inherit_excludes"])
-    else:
-        excludes = []
-    excl_file = os.path.join(confdir, "excludes", path)
-    if os.path.exists(excl_file):
-        excludes.append(excl_file)
-    return excludes
-
-
-def do_path(profile, path, target_base):
-    """Runs the rsync command for a single path. Assumes that everythings's mounted & decrypted."""
-    pathopts = options.paths[path]
-    source = pathopts["source"]
-    dest = os.path.join(target_base,pathopts["dest"])
-    if not os.path.exists(dest) and not ':' in target_base: # make sure the target exists (if it's not an SSH path)
+        # read last and running state
+        self.last = datetime.datetime.min
+        if exists(self.lastPath):
+            with open(self.lastPath, 'rt') as lastFile:
+                self.last = datetime.datetime.strptime(lastFile.read().strip(), DATE_FORMAT)
         try:
-            os.makedirs(dest)
-        except OSError as e:
-            raise RsyncRunException("Target directory does not exist and cannot create it: {0}".format(str(e)))
-    rsync_opts = RSYNC_DEFAULT_ARGS
-    if options.profiles[profile]["rsync_opts"] != "":
-        rsync_opts.extend(options.profiles[profile]["rsync_opts"].split())
-    excludes = get_excludes(path)
-    for excludefile in excludes:
-        rsync_opts.append("--exclude-from=" + excludefile)
-    if pathopts["versions"]:
-        # tricky part: keep several hardlinked versions
-        versions = pathopts["versions"]
-        if versions < 1:
-            print("nasty bastard")
-            raise ValueError("<1 versions requested, check your config file")
-        existing_versions = []
-        for existing_subdir in os.listdir(dest):
-            if not os.path.isdir(os.path.join(dest,existing_subdir)):
-                continue
+            self.running = datetime.datetime.fromtimestamp(getmtime(self.runningPath))
+        except FileNotFoundError:
+            self.running = False
+
+    @property
+    def targetBase(self):
+        return join(self.mountpoint, self.target) if self.mountpoint else self.target
+
+    def mount(self):
+        """Tries to mount (and, if necessary, decrypt) the device. Silently does nothing if there is
+        no mountpoint specified.
+        """
+        if self.crypttab_name:
             try:
-                date = datetime.datetime.strptime(existing_subdir, DATE_FORMAT)
-                existing_versions.append(date)
-            except ValueError:
-                print("There is a subdir in the backup path that's not a backup: {0}".format(existing_subdir))
-                continue # dirty subdir
-        existing_versions.sort() #earliest first
-        for oldversion in existing_versions[:-versions+1]: #delete old backups
-            
-            rm_cmd = "rm -rf '{0}'".format(os.path.join(dest,oldversion.strftime(DATE_FORMAT)).replace("'","\'"))
-            if pathopts["sudo"]:
-                rm_cmd = "sudo " + rm_cmd
-            print("Executing command {0}".format(rm_cmd))
-            os.system(rm_cmd)
-        for linkversion in existing_versions[-versions+1:]:
-            rsync_opts.append("--link-dest="+os.path.join(dest,linkversion.strftime(DATE_FORMAT)))
-        fulldest = os.path.join(dest, datetime.datetime.now().strftime(DATE_FORMAT))
-    else:
-        fulldest = dest
-    command = [RSYNC_CMD] + rsync_opts +  [source + "/", fulldest + "/"]
-    if pathopts["sudo"]:
-        command[:0] = ["sudo"]
-    print("Executing command: \n" + " ".join(command))
-    try:
-        rsync_proc = subprocess.Popen(command, stderr=subprocess.PIPE)
-        stdout, stderr = rsync_proc.communicate()
-    except KeyboardInterrupt:
-        raise RsyncRunException("Rsync interrupted by Keyboard")
-    except OSError as e:
-        raise RsyncRunException("Problem calling rsync: {0}".format(str(e)))
-    if rsync_proc.returncode != 0:
-        raise RsyncRunException("Rsync exited with non-zero return code:\n\n{0}".format(stderr.decode('utf8')))
-# ~~~~~~ END do_path(path, target_base) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-def find_profile():
-    """Tries to automagically determine the profile by existence of its device file."""
-    profile = ""
-    # --- determine which profile to use ---
-    for p in profiles:
-        if options.profiles[p]["device"] and os.path.exists(options.profiles[p]["device"]):
-            return p
-    if profile=="":
-        print("Did not find any backup device. You have to choose a profile manually.")
-        return None
-
-def do_backup(profile):
-    profopts = options.profiles[profile]
-    need_decrypt = profopts["crypttab_name"]
-    need_mount = profopts["mountpoint"]
-    mount_sudo = profopts["mount_sudo"]
-    umount_crypt = profopts["umount_crypt"]
-    backup_errors = 0
-    if need_decrypt: 
-        # we need to decrypt first
+                subprocess.check_call(['sudo', 'cryptdisks_start', self.crypttab_name])
+            except subprocess.CalledProcessError:
+                print('Error opening encrypted device "{}"'.format(self.crypttab_name))
+                return 17
+        # check if already mounted
+        with open('/etc/mtab') as mtab:
+            for line in mtab:
+                # spaces are encoded in mtab to preserve the formatting
+                mp = line.split()[1].replace("\\040", " ")
+                if mp == self.mountpoint:
+                    return
+        command = ['mount', self.mountpoint]
+        if self.mount_sudo:
+            command[0:0] = 'sudo'
         try:
-            print('executing: "sudo cryptdisks_start {}"'.format(profopts["crypttab_name"]))
-            subprocess.check_call(["sudo", "cryptdisks_start", profopts["crypttab_name"]])
+            subprocess.check_call(command)
         except subprocess.CalledProcessError:
-            print("Unable to decrypt device.")
-            return 17
-    if need_mount:
-        mountpoint = profopts["mountpoint"]
-        target_base = os.path.join(mountpoint,profopts["target"])
-        try:
-            mount(mountpoint, mount_sudo)
-        except subprocess.CalledProcessError:
-            print("Unable to mount device.")
+            warning('Error mounting {}'.format(self.mountpoint))
             return 19
-    else:
-        target_base = profopts["target"]
-    
-    for path in profopts["paths"]:
-        try:
-            do_path(profile, path, target_base)
-            print("path {} finished successful".format(path))
-        except RsyncRunException as rse:
-            backup_errors = backup_errors + 1
-            print("Error backing up {0}, rsync faild with {1}".format(path,rse.what))
-            input()
-  
-    # now we are done -- store last success time
-    now = datetime.datetime.now()
-    last =  now.strftime(DATE_FORMAT)
-    with open(os.path.join(confdir, ".last_backup_" + profile), 'w') as lastout:
-        lastout.write(last)
-    if need_mount:
-        command = ["umount.crypt" if umount_crypt else "umount"]
-        if mount_sudo:
-            command[0:0] = ["sudo"]
-        try:
-            subprocess.check_call(command + [mountpoint])
-        except:
-            print("WARNING: Failed to unmount device.")
-    if need_decrypt:
-        try:
-            subprocess.check_call(["sudo", "cryptdisks_stop", profopts["crypttab_name"]])
-        except:
-            print("WARNING: Faild to close encrypted device. THIS IS A SECURITY RISK, PLEASE TAKE CARE OF THAT!!!")
-            interact()
-    if profopts["device"]:
-        print("Now, please remember to turn off the device".format(profile))
-    if backup_errors > 0:
-        print("There were {0} errors during the backup. Please check this!".format(backup_errors))
-        return 1
-# ~~~~~~ END do_backup(profile) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-if __name__ == "__main__":
+    @property
+    def runningPath(self):
+        return join(self.confpath, '.running_{}'.format(self.name))
+
+    @property
+    def lastPath(self):
+        return join(self.confpath, '.last_backup_{}'.format(self.name))
+
+    def isExpired(self):
+        return datetime.datetime.now() - self.last > self.interval
+
+    def probablyCrashed(self):
+        return self.running and (datetime.datetime.now() - self.running).days >= 1
+
+    def touchRunning(self):
+        with open(self.runningPath, 'wt') as f:
+            pass
+
+    def finish(self):
+        now = datetime.datetime.now()
+        last = now.strftime(DATE_FORMAT)
+        with open(self.lastPath, 'wt') as lastout:
+            lastout.write(last)
+        os.remove(self.runningPath)
+        if self.mountpoint:
+            command = ['umount.crypt' if self.umount_crypt else 'umount', self.mountpoint]
+            if self.mount_sudo:
+                command[0:0] = ['sudo']
+            try:
+                subprocess.check_call(command)
+            except:
+                warning('WARNING', 'Failed to unmount device.')
+        if self.crypttab_name:
+            try:
+                subprocess.check_call(['sudo', 'cryptdisks_stop', self.crypttab_name])
+            except:
+                warning('WARNING', 'Faild to close encrypted device. THIS IS A SECURITY RISK, '
+                        'PLEASE TAKE CARE OF THAT!!!')
+
+    def __str__(self):
+        return self.name
+
+
+class Path:
+
+    def __init__(self, name, section):
+        self.name = name
+        self.source = None
+        self.dest = ''
+        self.inherit_excludes = section.get('inherit_excludes', None)
+        if 'source' in section:
+            self.source = expanduser(expandvars(section['source']))
+        if 'dest' in section:
+            self.dest = expanduser(expandvars(section['dest']))
+        self.sudo = section.getboolean('sudo', False)
+        self.versions = section.getint('versions', False)
+
+
+class BackupConfiguration:
+
+    def __init__(self, confpath):
+        self.confpath = confpath
+        self.profiles = {}
+        self.paths = {}
+
+    def readProfiles(self):
+        parser = configparser.ConfigParser()
+        parser.read(join(self.confpath, 'profiles'))
+        for pName in parser.sections():
+            profile = Profile(self.confpath, pName, parser[pName])
+            self.profiles[pName] = profile
+            
+    def readPaths(self):
+        parser = configparser.ConfigParser()
+        parser.read(join(self.confpath, 'paths'))
+        for path in parser.sections():
+            self.paths[path] = Path(path, parser[path])
+
+    def findProfile(self):
+        """Tries to automagically determine the profile by existence of its device file."""
+        # --- determine which profile to use ---
+        for profile in self.profiles.values():
+            if profile.device and exists(profile.device):
+                return profile
+
+    def check(self):
+        """Checks for profiles that are 'over time', prints a warning message for each of such."""
+        for profile in self.profiles.values():
+            if profile.probablyCrashed():
+                warning('Profile "{}" probably crashed'.format(profile),
+                        'Profile "{}" running since {}. This is probably wrong?'
+                        .format(profile, profile.running))
+            elif profile.running:
+                continue
+            elif profile.isExpired():
+                msg = WARNING_MESSAGE.format(profile=profile, last=profile.last,
+                                             interval=profile.interval.days)
+                if not profile.device or exists(profile.device):
+                    if yesNoQuestion('Backup outdated', msg + '\nStart now?'):
+                        self.doBackup(profile)
+                else:
+                    warning('Backup outdated', msg)
+
+    def doBackup(self, profile):
+        backupErrors = 0
+        profile.touchRunning()
+        profile.mount()
+        for path in profile.paths:
+            try:
+                self.backupPath(profile, self.paths[path])
+                print('Path {} successfully completed'.format(path))
+            except RsyncRunException as rse:
+                backupErrors += 1
+                warning('Backup failed',
+                        'Backup of {} failed; rsync terminated with the following message:\n'
+                        .format(path, rse))
+        profile.finish()
+        if profile.device:
+            warning('Backup finished', 'Please turn off the device "{}"'.format(profile.device))
+        if backupErrors > 0:
+            warning('{} errors occured during backup. Please check!'.format(backupErrors))
+            return 1
+
+    def excludes(self, path):
+        """Returns a list of excludes (direct ones plus all inherited)."""
+        if path.inherit_excludes:
+            excludes = self.excludes(self.paths[path.inherit_excludes])
+        else:
+            excludes = []
+        exclFile = join(self.confpath, 'excludes', path.name)
+        if exists(exclFile):
+            excludes.append(exclFile)
+        return excludes
+
+    def backupPath(self, profile, path):
+        """Runs the rsync command for a single path. Assumes that everythings's
+        mounted & decrypted."""
+        source = path.source
+        dest = join(profile.targetBase, path.dest)
+        # ensure the target exists (if it's not an SSH path)
+        if not exists(dest) and ':' not in profile.targetBase:
+            try:
+                os.makedirs(dest)
+            except OSError as e:
+                raise RsyncRunException('Error creating target directory {}'.format(e))
+        excludes = self.excludes(path)
+        rsyncOpts = profile.rsync_opts[:]
+        for excludefile in excludes:
+            rsyncOpts.append('--exclude-from=' + excludefile)
+        if path.versions:
+            # tricky part: keep several hardlinked versions
+            if path.versions < 1:
+                raise ValueError("<1 versions requested, check your config file")
+            existingVersions = []
+            for existingSubdir in os.listdir(dest):
+                if not isdir(join(dest, existingSubdir)):
+                    continue
+                try:
+                    date = datetime.datetime.strptime(existingSubdir, DATE_FORMAT)
+                    existingVersions.append(date)
+                except ValueError:
+                    print('Subdirectory {} of {} is not a backup'.format(existingSubdir, dest))
+                    continue
+            existingVersions.sort() #earliest first
+            for oldversion in existingVersions[:-path.versions + 1]:
+                # delete old backups
+                command = ['rm', '-rf',
+                           join(dest, oldversion.strftime(DATE_FORMAT)).replace('', "\'")]
+                if path.sudo:
+                    command[0:0] = 'sudo'
+                print('Executing command: {}'.format(' '.join(command)))
+                subprocess.check_call(command)
+            for linkversion in existingVersions[-path.versions + 1:]:
+                rsyncOpts.append('--link-dest=' + join(dest, linkversion.strftime(DATE_FORMAT)))
+            fulldest = join(dest, datetime.datetime.now().strftime(DATE_FORMAT))
+        else:
+            fulldest = dest
+        command = [RSYNC_CMD] + rsyncOpts +  [source + '/', fulldest + '/']
+        if path.sudo:
+            command[:0] = ['sudo']
+        print("Executing command: \n" + " ".join(command))
+        try:
+            rsyncProc = subprocess.Popen(command, stderr=subprocess.PIPE)
+            stdout, stderr = rsyncProc.communicate()
+        except KeyboardInterrupt:
+            raise RsyncRunException("Rsync interrupted by Keyboard")
+        except OSError as e:
+            raise RsyncRunException("Problem calling rsync: {0}".format(str(e)))
+        if rsyncProc.returncode != 0:
+            raise RsyncRunException("Rsync exited with non-zero return code:\n\n{0}".format(stderr.decode('utf8')))
+
+
+if __name__ == '__main__':
+    try:
+        import xdg.BaseDirectory
+        confPath = join(xdg.BaseDirectory.xdg_config_home, 'b')
+    except ImportError:
+        confPath = expanduser('~/.config/b')
+    config = BackupConfiguration(confPath)
+    config.readProfiles()
+    config.readPaths()
     if len(sys.argv) > 1 and sys.argv[1] == "check":
-        check()
+        config.check()
     else:
         if len(sys.argv) > 1:
-            profile = sys.argv[1]
+            profile = config.profiles[sys.argv[1]]
         else:
-            profile = find_profile()
+            profile = config.findProfile()
         if profile:
-            returncode = do_backup(profile)
+            returncode = config.doBackup(profile)
             sys.exit(returncode)
