@@ -4,6 +4,7 @@
 import os
 from os.path import join, expanduser, exists, expandvars, getmtime, isdir
 import sys
+import re
 import subprocess
 import configparser
 import datetime
@@ -32,21 +33,23 @@ WARNING_MESSAGE = ('Backup profile "{profile}" was last completed {last} ('
 
 def yesNoQuestion(title, text):
     """Displays a yes-no question"""
-    ans = subprocess.call(['zenity', '--question', '--title', title, '--text', text])
-    return ans == 0
+    # ans = subprocess.call(['zenity', '--question', '--title', title, '--text', text])
+    print(title)
+    print(text)
+    ans = input('(y/n)')
+    return ans in 'yY'
 
 
 def warning(title, text):
     """Displays a warning"""
-    subprocess.check_call(['zenity', '--warning', '--title', title, '--text', text])
+    print(title)
+    print(text)
+    input()
+    #subprocess.check_call(['zenity', '--warning', '--title', title, '--text', text])
 
 
 class RsyncRunException(Exception):
     pass
-
-
-def interact():
-    input("Press 'Enter' to continue...")
 
 
 class Profile:
@@ -55,9 +58,8 @@ class Profile:
         self.name = name
         self.confpath = confpath
         self.device = section.get('device', None)
-        self.crypttab_name = section.get('crypttab_name', None)
-        self.mountpoint = section.get('mountpoint', None)
         self.target = section.get('target', '')
+        self.mountpoint = None
         self.mount_sudo = section.getboolean('mount_sudo', False)
         self.umount_crypt = section.getboolean('umount_crypt', False)
         self.rsync_opts = RSYNC_DEFAULT_ARGS[:]
@@ -85,29 +87,22 @@ class Profile:
 
     def mount(self):
         """Tries to mount (and, if necessary, decrypt) the device. Silently does nothing if there is
-        no mountpoint specified.
+        no device specified.
         """
-        if self.crypttab_name:
-            try:
-                subprocess.check_call(['sudo', 'cryptdisks_start', self.crypttab_name])
-            except subprocess.CalledProcessError:
-                print('Error opening encrypted device "{}"'.format(self.crypttab_name))
-                return 17
+        if not self.device:
+            return
         # check if already mounted
-        with open('/etc/mtab') as mtab:
-            for line in mtab:
-                # spaces are encoded in mtab to preserve the formatting
-                mp = line.split()[1].replace("\\040", " ")
-                if mp == self.mountpoint:
-                    return
-        command = ['mount', self.mountpoint]
-        if self.mount_sudo:
-            command[0:0] = 'sudo'
-        try:
-            subprocess.check_call(command)
-        except subprocess.CalledProcessError:
-            warning('Error mounting {}'.format(self.mountpoint))
-            return 19
+        command = ['udisksctl', 'info', '--block-device', self.device]
+        output = subprocess.check_output(command).decode()
+        ans = re.findall(r'^\s*MountPoints:[ ]*(\S+)$', output, flags=re.MULTILINE)
+        if len(ans) == 0:
+            command = ['udisksctl', 'mount', '--block-device', self.device]
+            if self.mount_sudo:
+                command[0:0] = 'sudo'
+            output = subprocess.check_output(command).decode()
+            self.mountpoint = re.findall(r'Mounted \S* at (\S*)\.$', output)[0]
+        else:
+            self.mountpoint = ans[0]
 
     @property
     def runningPath(self):
@@ -121,32 +116,27 @@ class Profile:
         return datetime.datetime.now() - self.last > self.interval
 
     def probablyCrashed(self):
-        return self.running and (datetime.datetime.now() - self.running).days >= 1
+        return self.running and (datetime.datetime.now() - self.running).seconds >= 1800
 
     def touchRunning(self):
         with open(self.runningPath, 'wt') as f:
             pass
 
+    def removeRunning(self):
+        os.remove(self.runningPath)
+    
     def finish(self):
+        """Unmount device (if applicable) and store date."""
         now = datetime.datetime.now()
         last = now.strftime(DATE_FORMAT)
         with open(self.lastPath, 'wt') as lastout:
             lastout.write(last)
-        os.remove(self.runningPath)
         if self.mountpoint:
-            command = ['umount.crypt' if self.umount_crypt else 'umount', self.mountpoint]
+            command = ['udisksctl', 'unmount', '--block-device', self.device]
             if self.mount_sudo:
                 command[0:0] = ['sudo']
-            try:
-                subprocess.check_call(command)
-            except:
-                warning('WARNING', 'Failed to unmount device.')
-        if self.crypttab_name:
-            try:
-                subprocess.check_call(['sudo', 'cryptdisks_stop', self.crypttab_name])
-            except:
-                warning('WARNING', 'Faild to close encrypted device. THIS IS A SECURITY RISK, '
-                        'PLEASE TAKE CARE OF THAT!!!')
+            subprocess.check_call(command)
+            self.mountpoint = None
 
     def __str__(self):
         return self.name
@@ -215,22 +205,25 @@ class BackupConfiguration:
     def doBackup(self, profile):
         backupErrors = 0
         profile.touchRunning()
-        profile.mount()
-        for path in profile.paths:
-            try:
-                self.backupPath(profile, self.paths[path])
-                print('Path {} successfully completed'.format(path))
-            except RsyncRunException as rse:
-                backupErrors += 1
-                warning('Backup failed',
-                        'Backup of {} failed; rsync terminated with the following message:\n'
-                        .format(path, rse))
-        profile.finish()
-        if profile.device:
-            warning('Backup finished', 'Please turn off the device "{}"'.format(profile.device))
-        if backupErrors > 0:
-            warning('{} errors occured during backup. Please check!'.format(backupErrors))
-            return 1
+        try:
+            profile.mount()
+            for path in profile.paths:
+                try:
+                    self.backupPath(profile, self.paths[path])
+                    print('Path {} successfully completed'.format(path))
+                except RsyncRunException as rse:
+                    backupErrors += 1
+                    warning('Backup failed',
+                            'Backup of {} failed; rsync terminated with the following message:\n'
+                            .format(path, rse))
+            profile.finish()
+            if profile.device:
+                warning('Backup finished', 'Please turn off the device "{}"'.format(profile.device))
+            if backupErrors > 0:
+                warning('{} errors occured during backup. Please check!'.format(backupErrors))
+                return 1
+        finally:
+            profile.removeRunning()
 
     def excludes(self, path):
         """Returns a list of excludes (direct ones plus all inherited)."""
@@ -275,10 +268,9 @@ class BackupConfiguration:
             existingVersions.sort() #earliest first
             for oldversion in existingVersions[:-path.versions + 1]:
                 # delete old backups
-                command = ['rm', '-rf',
-                           join(dest, oldversion.strftime(DATE_FORMAT)).replace('', "\'")]
+                command = ['rm', '-rf', join(dest, oldversion.strftime(DATE_FORMAT))]
                 if path.sudo:
-                    command[0:0] = 'sudo'
+                    command.insert(0, 'sudo')
                 print('Executing command: {}'.format(' '.join(command)))
                 subprocess.check_call(command)
             for linkversion in existingVersions[-path.versions + 1:]:
@@ -288,7 +280,7 @@ class BackupConfiguration:
             fulldest = dest
         command = [RSYNC_CMD] + rsyncOpts +  [source + '/', fulldest + '/']
         if path.sudo:
-            command[:0] = ['sudo']
+            command.insert(0, 'sudo')
         print("Executing command: \n" + " ".join(command))
         try:
             rsyncProc = subprocess.Popen(command, stderr=subprocess.PIPE)
@@ -298,7 +290,7 @@ class BackupConfiguration:
         except OSError as e:
             raise RsyncRunException("Problem calling rsync: {0}".format(str(e)))
         if rsyncProc.returncode != 0:
-            raise RsyncRunException("Rsync exited with non-zero return code:\n\n{0}".format(stderr.decode('utf8')))
+            raise RsyncRunException("Rsync exited with non-zero return code:\n\n{0}".format(stderr.decode()))
 
 
 if __name__ == '__main__':
