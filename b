@@ -108,7 +108,7 @@ class Profile:
                             .format(path, rse))
             self.finish()
             if self.device:
-                warning('Please turn off the device "{}"'.format(profile.device))
+                warning('Please turn off the device "{}"'.format(self.device))
             if backupErrors > 0:
                 warning('{} errors occured during backup. Please check!'.format(backupErrors))
         finally:
