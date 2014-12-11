@@ -83,9 +83,9 @@ class Profile:
     def check(self):
         if self.running and (datetime.datetime.now() - self.running).seconds >= 1800:
             # probably crashed?
-            warning('Profile "{}" running since {}. It might have crashed?!'
-                .format(self, self.running))
-        elif datetime.datetime.now() - self.last > self.interval and not self.running:
+            warning('Assuming that "{}" running since {} has crashed'.format(self, self.running))
+            self.removeRunning()
+        if datetime.datetime.now() - self.last > self.interval and not self.running:
             msg = WARNING_MSG.format(profile=self, last=self.last, interval=self.interval.days)
             if not self.device or exists(self.device):
                 if yesNoQuestion(msg + '\nStart now?'):
@@ -192,7 +192,11 @@ class Profile:
             pass
 
     def removeRunning(self):
-        os.remove(self.runningPath)
+        self.running = False
+        try:
+            os.remove(self.runningPath)
+        except FileNotFoundError:
+            pass
     
     def finish(self):
         """Unmount device (if applicable) and store date."""
