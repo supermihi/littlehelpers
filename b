@@ -104,7 +104,7 @@ class Profile:
                     print('Path {} of profile {} successfully completed'.format(path, self))
                 except RsyncRunException as rse:
                     backupErrors += 1
-                    warning('Backup of {} failed; rsync terminated with the following message:\n'
+                    warning('Backup of {} failed; rsync terminated with the following message:\n{}'
                             .format(path, rse))
             self.finish()
             if self.device:
@@ -156,7 +156,7 @@ class Profile:
         rsyncProc = subprocess.Popen(command, stderr=subprocess.PIPE)
         stdout, stderr = rsyncProc.communicate()
         if rsyncProc.returncode != 0:
-            raise RsyncRunException("Rsync exited with non-zero return code:\n\n{0}".format(stderr.decode()))
+            raise RsyncRunException("Rsync exited with non-zero return code:\n\n{}".format(stderr.decode()))
 
     @property
     def targetBase(self):
