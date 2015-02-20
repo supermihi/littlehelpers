@@ -5,11 +5,14 @@
 #
 # List of repositories is read from $XDG_CONFIG_HOME/repocheck
 
-import os, subprocess, sys
-from os.path import join, expanduser, expandvars, isdir
+import os, subprocess
+import logging
+import argparse
+from os.path import join, expanduser, expandvars
 
 
 def checkRepository(path, fetch=False):
+    logging.info('checking repository at "{}" ...'.format(path))
     if os.path.isdir(join(path, '.git')):
         return checkGit(path, fetch)
     elif os.path.isdir(join(path, '.svn')):
@@ -22,7 +25,7 @@ def checkRepository(path, fetch=False):
 
 def checkSubversion(path, fetch=False):
     # check local modifications
-    output = subprocess.check_output(['svn', 'status', '-q'], cwd=path)
+    output = subprocess.check_output(['svn', 'status', '-q'], cwd=path, stderr=subprocess.DEVNULL)
     if output != b"":
         return False
     elif fetch:
@@ -37,16 +40,19 @@ def checkSubversion(path, fetch=False):
         if revLine(outputRemote) != revLine(outputLocal):
             return False
     return True
-    
+
+
 def checkGit(path, fetch=False):
     if fetch:
-        subprocess.check_call(['git', 'fetch'], cwd=path)
+        subprocess.check_call(['git', 'fetch'], cwd=path, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL)
     output = subprocess.check_output(['git', 'diff', 'origin/master'], cwd=path)
     return output == b""
 
 def checkMercurial(path, fetch=False):
     if fetch:
-        subprocess.check_call(['hg', 'pull'], cwd=path)
+        subprocess.check_call(['hg', 'pull'], cwd=path, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL)
     return subprocess.check_output(['hg', 'diff', '-r', 'tip'], cwd=path) == b''
         
 if __name__ == "__main__":
@@ -56,11 +62,16 @@ if __name__ == "__main__":
     with open(configfile, 'rt') as f:
         for line in f:
             repos.append(expanduser(line[:-1]))
-    fetch = len(sys.argv) > 1 and sys.argv[1] == "fetch"
+    parser = argparse.ArgumentParser()
+    parser.add_argument('action', nargs='?', choices=('fetch', 'display'), default='display')
+    parser.add_argument('-v', '--verbose', action='store_true')
+    args = parser.parse_args()
+    logging.basicConfig(format='%(levelname)s:%(message)s',
+                        level=logging.DEBUG if args.verbose else logging.WARNING)
     unclean = []
     for repo in repos:
         try:
-            if not checkRepository(repo, fetch):
+            if not checkRepository(repo, args.action == 'fetch'):
                 unclean.append(repo)
         except Exception as e:
             print('ERROR checking repository at {}'.format(repo))
