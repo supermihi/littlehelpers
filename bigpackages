@@ -2,7 +2,7 @@
 # Shows installed packages, ordered decreasingly by install size.
 # Works for both Arch Linux and Debian-based distributions.
 if [[ "$(lsb_release -i -s)" =~ .*[Aa]rch.* ]]; then
-    LANG=C pacman -Qi | awk '/^Name/ {pkg=$3} /Size/ {print $4$5,pkg}' | sort -n
+    expac -s "%-30n %m" | sort -hk 2 | awk '{print $1, $2/1024/1024}' | column -t
 else
     dpkg-query -W --showformat='${Installed-Size} ${Package}\n' | sort -n
 fi
