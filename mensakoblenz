@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # coding: UTF-8
-# Copyright: 2013 Michael Helmling
+# Copyright: 2013-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
@@ -12,6 +12,7 @@
 from collections import OrderedDict
 import datetime, re, sys
 from urllib.request import urlopen
+import ssl
 import json
 
 url = "https://m.uni-koblenz.de/server/core/interfaces/cafeteria.php?date={}"
@@ -27,7 +28,8 @@ def getMenu(filters=[], offset=0):
                  "dinner"    : "Abendmensa",
                  "bistro"    : "Bistro" }
     datestr = (datetime.date.today() + datetime.timedelta(days=offset)).strftime("%d.%m.%Y")
-    data = json.loads(urlopen(url.format(datestr)).read().decode())
+    context = ssl._create_unverified_context()
+    data = json.loads(urlopen(url.format(datestr), context=context).read().decode())
     table = OrderedDict()
     filters = [f.lower() for f in filters]
     for menu in data['menus']:
