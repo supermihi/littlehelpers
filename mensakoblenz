@@ -30,6 +30,8 @@ def getMenu(filters=[], offset=0):
     datestr = (datetime.date.today() + datetime.timedelta(days=offset)).strftime("%d.%m.%Y")
     context = ssl._create_unverified_context()
     data = json.loads(urlopen(url.format(datestr), context=context).read().decode())
+    if not data:
+        raise IndexError()
     table = OrderedDict()
     filters = [f.lower() for f in filters]
     for menu in data['menus']:
