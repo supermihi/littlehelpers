@@ -98,7 +98,7 @@ def startTranssync(options):
         t.start()
     
     c = Process(target=copierWorker,
-        kwargsargs=dict(jobs=copyingJobs, options=options, terminate=terminate))
+        kwargs=dict(jobs=copyingJobs, options=options, terminate=terminate))
     c.start()
 
     # main loop: fancy output
@@ -142,7 +142,7 @@ def encoderWorker(name, jobs, options, flacSize, oggSize, terminate):
             else:
                 print('ERROR encoding {}'.format(source))
         else:
-            print('\nthread {} has eencoded {}'.format(name, basename(target)))
+            print('\nthread {} has encoded {}'.format(name, basename(target)))
             oggSize.Value += getsize(target)
             flacSize.Value += getsize(source)
         jobs.task_done()
