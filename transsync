@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Script to maintain a copy of a music collection, in which FLAC files are recoded to OGG Vorbis for
+# space reasons. If possible, all other files are hard linked, so that no additional space is wasted
+# for them.
+
+import os, subprocess, os.path
+import sys, time, shutil, signal
+from multiprocessing import Process, Value, Event, Queue
+from os.path import relpath, join, exists, getmtime, getsize, basename
+import collections
+import queue
+import argparse
+
+import taglib
+#
+DEFAULT_SOURCE_PATH = '/ftp/musik'
+DEFAULT_TARGET_PATH = '/ftp/musiksmall'
+DEFAULT_OGG_OPTIONS = ['-Q', '-q3'] # quiet mode, normal quality
+
+
+def startTranssync(options):
+    encodingJobs = queue.Queue()
+    copyingJobs = queue.Queue()
+    startTime = time.time()
+
+    stats = collections.Counter(['todoflac', 'todocopy'])
+    flacSize = Value('d')
+    oggSize = Value('d')
+    terminate = Event()
+    errorFiles = []
+
+    os.chdir(options.source)
+    bla = 0
+
+    # create target directory tree
+    for dirpath, dirnames, files in os.walk(options.source):
+        for subdir in dirnames:
+            relsubdir = relpath(join(dirpath, subdir))
+            targetsubdir = join(options.destination, relsubdir)
+            if not exists(targetsubdir):
+                sys.stdout.write('\r' + ' '*bla)
+                ostring = '\rCreating directory {}...'.format(targetsubdir)
+                bla = len(ostring)
+                print(ostring, end='')
+                os.mkdir(targetsubdir)
+
+    sys.stdout.write('\r' + ' '*bla)
+    print('\rDone creating directories.')
+
+    # delete files without corresponding sources and empty folders
+    for dirpath, dirnames, files in os.walk(options.destination, topdown=False):
+        dirInSource = join(options.source, relpath(dirpath, options.destination))
+        if not exists(dirInSource):
+            shutil.rmtree(dirpath)
+            continue
+        for file in files:
+            if exists(join(dirInSource, file)):
+                continue
+            base, extension = file.rsplit('.', 1)
+            if extension == 'ogg' and exists(join(dirInSource, base + '.flac')):
+                continue
+            print('deleting {}'.format(join(dirpath, file)))
+            os.remove(join(dirpath, file))
+
+    # add encoding and copying jobs
+    for dirpath, dirnames, files in os.walk(options.source):
+        for file in files:
+            sourcefile = join(dirpath, file)
+            try:
+                base, extension = file.rsplit('.', 1)
+            except IndexError:
+                continue  # no audio file
+            extension = extension.lower()
+            if extension == 'flac':
+                targetfile = join(options.destination, relpath(dirpath), base + '.ogg')
+                if not exists(targetfile) or getmtime(sourcefile) > getmtime(targetfile):
+                    encodingJobs.put((sourcefile, targetfile))
+                    stats['todoflac'] += 1
+            else:
+                targetfile = join(options.destination, relpath(dirpath), file)
+                if not exists(targetfile) or getsize(targetfile) != getsize(sourcefile) or \
+                                getmtime(sourcefile) > getmtime(targetfile):
+                    stats['todocopy'] += 1
+                    copyingJobs.put((sourcefile, targetfile))
+
+    # create and start threads
+    for i in range(options.threads):
+        t = Process(target=encoderWorker,
+                    args=(name, encodingJobs, options, flacSize, oggSize, terminate))
+        t.start(target=copierWorker,
+                args=(copyingJobs, options, terminate))
+
+    c = Thread(target=copier)
+    c.start()
+
+    # main loop: fancy output
+    try:
+        ratio = 0
+        while not (encodingJobs.empty() and copyingJobs.empty()):
+            sys.stdout.write('\r' + ' '*bla)
+            if flacSize.Value > 0:
+                ratio = oggSize.Value / flacSize.Value
+            output = ('{0} of {1} pending encodings. {2} of {3} pending copies. Shrunk {4:.1f}MB '
+                      'FLAC -> {5:.1f}MB OGG (ratio: {6:.3f}). {7:.2f} seconds elapsed.'
+                      .format(encodingJobs.qsize(), stats['todoflac'],
+                              copyingJobs.qsize(), stats['todocopy'],
+                              flacSize.Value/(1024*1024), oggSize.Value/(1024*1024),
+                              ratio, time.time() - startTime))
+            bla = len(output)
+            print('\r' + output, end='')
+            sys.stdout.flush()
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        print('Waiting for threads to finish...')
+        terminate.set()
+
+
+def encoderWorker(name, jobs, options, flacSize, oggSize, terminate):
+    """Worker function for an encoder thread."""
+    while not terminate.is_set():
+        try:
+            source, target = jobs.get(timeout=0.1)
+        except queue.Empty:
+            return
+        retcode = subprocess.call(['oggenc'] + DEFAULT_OGG_OPTIONS + ['-o' + target, source])
+        if retcode != 0:
+            if termminate.is_set:
+                try:
+                    os.remove(target)
+                    print('Cleaning unfinished file {}'.format(target))
+                finally:
+                    print('\nThread {} returned'.format(name))
+                    return
+            else:
+                print('ERROR encoding {}'.format(source))
+        else:
+            print('\nthread {} has eencoded {}'.format(name, basename(target)))
+            oggSize.Value += getsize(target)
+            flacSize.Value += getsize(source)
+        jobs.task_done()
+# ----------------------------------------------------------------------------------------------
+
+
+# ----------------------------------------------------------------------------------------------
+def copierWorker(options, jobs, terminate):
+    """Worker function for a copy thread."""
+    hardlinks = not options.copy
+    while not jobs.empty():
+        source, target = jobs.get()
+        if exists(target):
+            os.remove(target)
+        if hardlinks:
+            try:
+                os.link(source, target)
+            except OSError as e:
+                print("Error hard-linking file {1} to {2}: {0}".format(e, source, target))
+                hardlinks = False
+                shutil.copy(source, target)
+        else:
+            shutil.copy(source, target)
+    print('\nCopier finished.')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Maintain a copy of a music collection in which '
+        'FLAC files are recoded to ogg vorbis.')
+    parser.add_argument('-s', '--source', default=DEFAULT_SOURCE_PATH,
+                        help='source directory (default: {})'.format(DEFAULT_SOURCE_PATH))
+    parser.add_argument('-d', '--destination', default=DEFAULT_TARGET_PATH,
+                        help='target directory (default: {}'.format(DEFAULT_TARGET_PATH))
+    parser.add_argument('-t', '--threads', type=int, default=os.cpu_count() - 1)
+    parser.add_argument('-c', '--copy', action='store_true', help='always copy non-FLAC files '
+        'instead of using hard links')
+
+    options = parser.parse_args()
+    startTranssync(options)
