@@ -88,11 +88,17 @@ def startTranssync(options):
     # create and start threads
     for i in range(options.threads):
         t = Process(target=encoderWorker,
-                    args=(name, encodingJobs, options, flacSize, oggSize, terminate))
-        t.start(target=copierWorker,
-                args=(copyingJobs, options, terminate))
-
-    c = Thread(target=copier)
+                    kwargs=dict(
+                        name=i,
+                        jobs=encodingJobs,
+                        options=options,
+                        flacSize=flacSize,
+                        oggSize=oggSize,
+                        terminate=terminate))
+        t.start()
+    
+    c = Process(target=copierWorker,
+        kwargsargs=dict(jobs=copyingJobs, options=options, terminate=terminate))
     c.start()
 
     # main loop: fancy output
@@ -144,7 +150,7 @@ def encoderWorker(name, jobs, options, flacSize, oggSize, terminate):
 
 
 # ----------------------------------------------------------------------------------------------
-def copierWorker(options, jobs, terminate):
+def copierWorker(jobs, options, terminate):
     """Worker function for a copy thread."""
     hardlinks = not options.copy
     while not jobs.empty():
