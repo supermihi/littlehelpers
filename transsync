@@ -26,8 +26,10 @@ def startTranssync(options):
     startTime = time.time()
 
     stats = collections.Counter(['todoflac', 'todocopy'])
-    flacSize = Value('d')
-    oggSize = Value('d')
+    flacSize = Value('d', 0)
+    oggSize = Value('d', 0)
+    encoded = Value('i', 0)
+    copied = Value('i', 0)
     terminate = Event()
     errorFiles = []
 
@@ -94,11 +96,12 @@ def startTranssync(options):
                         options=options,
                         flacSize=flacSize,
                         oggSize=oggSize,
+                        encoded=encoded,
                         terminate=terminate))
         t.start()
     
     c = Process(target=copierWorker,
-        kwargs=dict(jobs=copyingJobs, options=options, terminate=terminate))
+        kwargs=dict(jobs=copyingJobs, options=options, copied=copied, terminate=terminate))
     c.start()
 
     # main loop: fancy output
@@ -106,13 +109,13 @@ def startTranssync(options):
         ratio = 0
         while not (encodingJobs.empty() and copyingJobs.empty()):
             sys.stdout.write('\r' + ' '*bla)
-            if flacSize.Value > 0:
-                ratio = oggSize.Value / flacSize.Value
-            output = ('{0} of {1} pending encodings. {2} of {3} pending copies. Shrunk {4:.1f}MB '
+            if flacSize.value > 0:
+                ratio = oggSize.value / flacSize.value
+            output = ('Encoded: {0}/{1}; copied: {2}/{3}; Shrunk {4:.1f}MB '
                       'FLAC -> {5:.1f}MB OGG (ratio: {6:.3f}). {7:.2f} seconds elapsed.'
-                      .format(encodingJobs.qsize(), stats['todoflac'],
-                              copyingJobs.qsize(), stats['todocopy'],
-                              flacSize.Value/(1024*1024), oggSize.Value/(1024*1024),
+                      .format(encoded.value, stats['todoflac'],
+                              copied.value, stats['todocopy'],
+                              flacSize.value/(1024*1024), oggSize.value/(1024*1024),
                               ratio, time.time() - startTime))
             bla = len(output)
             print('\r' + output, end='')
@@ -123,19 +126,23 @@ def startTranssync(options):
         terminate.set()
 
 
-def encoderWorker(name, jobs, options, flacSize, oggSize, terminate):
+def encoderWorker(name, jobs, options, flacSize, oggSize, encoded, terminate):
     """Worker function for an encoder thread."""
     while not terminate.is_set():
         try:
             source, target = jobs.get(timeout=0.1)
         except queue.Empty:
             return
-        retcode = subprocess.call(['oggenc'] + DEFAULT_OGG_OPTIONS + ['-o' + target, source])
+        try:
+            retcode = subprocess.call(['oggenc'] + DEFAULT_OGG_OPTIONS + ['-o' + target + '.transtmp', source])
+        except KeyboardInterrupt:
+            terminate.set()
+            retcode = 99
         if retcode != 0:
-            if termminate.is_set:
+            if terminate.is_set():
                 try:
-                    os.remove(target)
-                    print('Cleaning unfinished file {}'.format(target))
+                    os.remove(target + '.transtmp')
+                    print('Cleaning unfinished file {}'.format(target + '.transtmp'))
                 finally:
                     print('\nThread {} returned'.format(name))
                     return
@@ -143,29 +150,35 @@ def encoderWorker(name, jobs, options, flacSize, oggSize, terminate):
                 print('ERROR encoding {}'.format(source))
         else:
             print('\nthread {} has encoded {}'.format(name, basename(target)))
-            oggSize.Value += getsize(target)
-            flacSize.Value += getsize(source)
+            os.rename(target + '.transtmp', target)
+            oggSize.value += getsize(target)
+            flacSize.value += getsize(source)
+            encoded.value += 1
         jobs.task_done()
 # ----------------------------------------------------------------------------------------------
 
 
 # ----------------------------------------------------------------------------------------------
-def copierWorker(jobs, options, terminate):
+def copierWorker(jobs, options, copied, terminate):
     """Worker function for a copy thread."""
     hardlinks = not options.copy
     while not jobs.empty():
-        source, target = jobs.get()
-        if exists(target):
-            os.remove(target)
-        if hardlinks:
-            try:
-                os.link(source, target)
-            except OSError as e:
-                print("Error hard-linking file {1} to {2}: {0}".format(e, source, target))
-                hardlinks = False
+        try:
+            source, target = jobs.get()
+            if exists(target):
+                os.remove(target)
+            if hardlinks:
+                try:
+                    os.link(source, target)
+                except OSError as e:
+                    print("Error hard-linking file {1} to {2}: {0}".format(e, source, target))
+                    hardlinks = False
+                    shutil.copy(source, target)
+            else:
                 shutil.copy(source, target)
-        else:
-            shutil.copy(source, target)
+            copied.value += 1
+        except KeyboardInterrupt:
+            return
     print('\nCopier finished.')
 
 
