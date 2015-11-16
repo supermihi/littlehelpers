@@ -14,57 +14,56 @@ import queue
 import argparse
 
 import taglib
-#
+
 DEFAULT_SOURCE_PATH = '/ftp/musik'
 DEFAULT_TARGET_PATH = '/ftp/musiksmall'
 DEFAULT_OGG_OPTIONS = ['-Q', '-q3'] # quiet mode, normal quality
 
 
+def runRsync(options):
+    print('running rsync to copy non-flac files...')
+    subprocess.call(['rsync',
+                     '--exclude=*.flac', '--exclude=unsortiert & neu/*',
+                     options.source + '/',
+                     options.destination,
+                     '-va'] + [] if options.copy else ['-H'])
+    
 def startTranssync(options):
-    encodingJobs = queue.Queue()
-    copyingJobs = queue.Queue()
+    encodingJobs = Queue()
     startTime = time.time()
 
-    stats = collections.Counter(['todoflac', 'todocopy'])
+    toEncode = 0
     flacSize = Value('d', 0)
     oggSize = Value('d', 0)
     encoded = Value('i', 0)
-    copied = Value('i', 0)
     terminate = Event()
     errorFiles = []
-
-    os.chdir(options.source)
+    if not options.no_rsync:
+        runRsync(options)
     bla = 0
-
-    # create target directory tree
-    for dirpath, dirnames, files in os.walk(options.source):
-        for subdir in dirnames:
-            relsubdir = relpath(join(dirpath, subdir))
-            targetsubdir = join(options.destination, relsubdir)
-            if not exists(targetsubdir):
-                sys.stdout.write('\r' + ' '*bla)
-                ostring = '\rCreating directory {}...'.format(targetsubdir)
-                bla = len(ostring)
-                print(ostring, end='')
-                os.mkdir(targetsubdir)
-
-    sys.stdout.write('\r' + ' '*bla)
-    print('\rDone creating directories.')
+    
+    def inSource(path):
+        return join(options.source, relpath(path, options.destination))
+    
+    def inDestination(path):
+        return join(options.destination, relpath(path, options.source))
 
     # delete files without corresponding sources and empty folders
-    for dirpath, dirnames, files in os.walk(options.destination, topdown=False):
-        dirInSource = join(options.source, relpath(dirpath, options.destination))
+    for dirpath, _, files in os.walk(options.destination, topdown=False):
+        dirInSource = inSource(dirpath)
         if not exists(dirInSource):
             shutil.rmtree(dirpath)
             continue
         for file in files:
-            if exists(join(dirInSource, file)):
+            fileInSource = join(dirInSource, file)
+            fileInDest = join(dirpath, file)
+            if exists(fileInSource):
                 continue
             base, extension = file.rsplit('.', 1)
             if extension == 'ogg' and exists(join(dirInSource, base + '.flac')):
                 continue
-            print('deleting {}'.format(join(dirpath, file)))
-            os.remove(join(dirpath, file))
+            print('deleting {}'.format(fileInDest))
+            os.remove(fileInDest)
 
     # add encoding and copying jobs
     for dirpath, dirnames, files in os.walk(options.source):
@@ -76,18 +75,14 @@ def startTranssync(options):
                 continue  # no audio file
             extension = extension.lower()
             if extension == 'flac':
-                targetfile = join(options.destination, relpath(dirpath), base + '.ogg')
+                targetfile = join(inDestination(dirpath), base) + '.ogg'
                 if not exists(targetfile) or getmtime(sourcefile) > getmtime(targetfile):
                     encodingJobs.put((sourcefile, targetfile))
-                    stats['todoflac'] += 1
-            else:
-                targetfile = join(options.destination, relpath(dirpath), file)
-                if not exists(targetfile) or getsize(targetfile) != getsize(sourcefile) or \
-                                getmtime(sourcefile) > getmtime(targetfile):
-                    stats['todocopy'] += 1
-                    copyingJobs.put((sourcefile, targetfile))
+                    toEncode += 1
 
+    print('starting {} encoding threads for {} FLAC files'.format(options.threads, toEncode))
     # create and start threads
+    threads = []
     for i in range(options.threads):
         t = Process(target=encoderWorker,
                     kwargs=dict(
@@ -99,28 +94,26 @@ def startTranssync(options):
                         encoded=encoded,
                         terminate=terminate))
         t.start()
-    
-    c = Process(target=copierWorker,
-        kwargs=dict(jobs=copyingJobs, options=options, copied=copied, terminate=terminate))
-    c.start()
+        threads.append(t)
 
     # main loop: fancy output
     try:
         ratio = 0
-        while not (encodingJobs.empty() and copyingJobs.empty()):
+        while not encodingJobs.empty():
             sys.stdout.write('\r' + ' '*bla)
             if flacSize.value > 0:
                 ratio = oggSize.value / flacSize.value
-            output = ('Encoded: {0}/{1}; copied: {2}/{3}; Shrunk {4:.1f}MB '
-                      'FLAC -> {5:.1f}MB OGG (ratio: {6:.3f}). {7:.2f} seconds elapsed.'
-                      .format(encoded.value, stats['todoflac'],
-                              copied.value, stats['todocopy'],
+            output = ('Encoded: {}/{} files, shrunk {:.1f}MB FLAC -> '
+                      '{:.1f}MB OGG (ratio: {:.3f}). {:.2f}s elapsed.'
+                      .format(encoded.value, toEncode,
                               flacSize.value/(1024*1024), oggSize.value/(1024*1024),
                               ratio, time.time() - startTime))
             bla = len(output)
             print('\r' + output, end='')
             sys.stdout.flush()
-            time.sleep(0.2)
+            time.sleep(.5)
+        for t in threads:
+            t.join()
     except KeyboardInterrupt:
         print('Waiting for threads to finish...')
         terminate.set()
@@ -131,6 +124,7 @@ def encoderWorker(name, jobs, options, flacSize, oggSize, encoded, terminate):
     while not terminate.is_set():
         try:
             source, target = jobs.get(timeout=0.1)
+            print('get ', source, target)
         except queue.Empty:
             return
         try:
@@ -154,32 +148,6 @@ def encoderWorker(name, jobs, options, flacSize, oggSize, encoded, terminate):
             oggSize.value += getsize(target)
             flacSize.value += getsize(source)
             encoded.value += 1
-        jobs.task_done()
-# ----------------------------------------------------------------------------------------------
-
-
-# ----------------------------------------------------------------------------------------------
-def copierWorker(jobs, options, copied, terminate):
-    """Worker function for a copy thread."""
-    hardlinks = not options.copy
-    while not jobs.empty():
-        try:
-            source, target = jobs.get()
-            if exists(target):
-                os.remove(target)
-            if hardlinks:
-                try:
-                    os.link(source, target)
-                except OSError as e:
-                    print("Error hard-linking file {1} to {2}: {0}".format(e, source, target))
-                    hardlinks = False
-                    shutil.copy(source, target)
-            else:
-                shutil.copy(source, target)
-            copied.value += 1
-        except KeyboardInterrupt:
-            return
-    print('\nCopier finished.')
 
 
 if __name__ == '__main__':
@@ -192,6 +160,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--threads', type=int, default=os.cpu_count() - 1)
     parser.add_argument('-c', '--copy', action='store_true', help='always copy non-FLAC files '
         'instead of using hard links')
+    parser.add_argument('-n', '--no-rsync', action='store_true')
 
     options = parser.parse_args()
     startTranssync(options)
