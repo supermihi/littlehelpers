@@ -112,11 +112,11 @@ def startTranssync(options):
             print('\r' + output, end='')
             sys.stdout.flush()
             time.sleep(.5)
-        for t in threads:
-            t.join()
     except KeyboardInterrupt:
-        print('Waiting for threads to finish...')
         terminate.set()
+    print('Waiting for threads to finish...')
+    for t in threads:
+            t.join()
 
 
 def encoderWorker(name, jobs, options, flacSize, oggSize, encoded, terminate):
@@ -124,7 +124,6 @@ def encoderWorker(name, jobs, options, flacSize, oggSize, encoded, terminate):
     while not terminate.is_set():
         try:
             source, target = jobs.get(timeout=0.1)
-            print('get ', source, target)
         except queue.Empty:
             return
         try:
