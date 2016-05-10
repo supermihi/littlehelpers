@@ -1,4 +1,4 @@
-from distutils.core import setup
+from setuptools import setup
 
 setup(
     name='worg',
@@ -8,5 +8,6 @@ setup(
     license='',
     author='Michael Helmling',
     author_email='michaelhelmling@posteo.de',
-    description='simple backup reminder script'
+    description='simple backup reminder script',
+    entry_points={ 'console_scripts': ['worg = worg.script:run'] },
 )
