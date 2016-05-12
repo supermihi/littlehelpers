@@ -9,5 +9,5 @@ setup(
     author='Michael Helmling',
     author_email='michaelhelmling@posteo.de',
     description='simple backup reminder script',
-    entry_points={ 'console_scripts': ['worg = worg.script:run'] },
+    entry_points={'console_scripts': ['worg = worg.script:run']},
 )

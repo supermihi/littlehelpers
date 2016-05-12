@@ -3,6 +3,7 @@ import os
 import os.path
 from os.path import expanduser, isfile, join
 import subprocess
+import dateutil.parser
 
 
 def confDirectory():
@@ -41,13 +42,12 @@ class Profile:
 
     @property
     def lastCompletedFile(self):
-        return join(confDirectory(), '.last_complete_{}'.format(self.name))
+        return join(confDirectory(), 'last_complete_{}'.format(self.name))
 
     def lastCompleted(self):
-        ISOFORMAT = '%Y-%m-%dT%H:%M:%S'
         if isfile(self.lastCompletedFile):
             file = open(self.lastCompletedFile, 'rt').read()
-            return datetime.datetime.strptime(file.strip(), ISOFORMAT)
+            return dateutil.parser.parse(file.strip())
         return datetime.datetime.min
 
     def storeLastCompleted(self):
@@ -69,8 +69,9 @@ class Profile:
             raise RuntimeError(self.availChecker.message())
         self.createPidfile()
         try:
+            print('Running backup profile "{}" ...'.format(self))
             subprocess.run(self.command, shell=True, check=True)
-            print('success!')
+            print('Backup finished. Please unplug device!')
             self.storeLastCompleted()
         except subprocess.CalledProcessError as e:
             print('error: {}'.format(e))
