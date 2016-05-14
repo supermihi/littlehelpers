@@ -1,7 +1,25 @@
 import os.path
 import subprocess
 
-class DeviceAvailabilityChecker:
+
+class BackupNotAvailableException(RuntimeError):
+    pass
+
+
+class AvailabilityChecker:
+
+    def isAvailable(self):
+        raise NotImplementedError()
+
+    def message(self):
+        raise NotImplementedError()
+
+    def assertAvailable(self):
+        if not self.isAvailable():
+            raise BackupNotAvailableException(self.message())
+
+
+class DeviceAvailabilityChecker(AvailabilityChecker):
 
     def __init__(self, path):
         self.path = path
@@ -13,7 +31,7 @@ class DeviceAvailabilityChecker:
         return "Device {} not available".format(self.path)
 
 
-class PingAvailabilityChecker:
+class PingAvailabilityChecker(AvailabilityChecker):
 
     def __init__(self, url):
         self.url = url
@@ -23,11 +41,17 @@ class PingAvailabilityChecker:
             return False
         return subprocess.call(['ping', '-c1', '-q', '-W1', self.url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def message(self):
+        return "URL {} not available".format(self.path)
 
-class AlwaysAvailableAvailabilityChecker:
 
-    def isAvailable(selfs):
+class AlwaysAvailableAvailabilityChecker(AvailabilityChecker):
+
+    def isAvailable(self):
         return True
+
+    def message(self):
+        return "Should not see this!"
 
 
 def parse(config):

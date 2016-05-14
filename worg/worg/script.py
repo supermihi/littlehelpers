@@ -5,6 +5,8 @@ import sys
 
 
 def run():
+    import worg.availability
+
     profiles = createProfiles()
     exitcode = 0
     if len(sys.argv) == 1:
@@ -18,13 +20,14 @@ def run():
         if name in profiles:
             try:
                 profiles[name].run()
-            except:
+            except worg.availability.BackupNotAvailableException as e:
+                print(e)
                 exitcode = 1
         else:
             print('unknown backup profile {}'.format(name))
             exitcode = 1
 
-    input('press any key to end worg ...')
+    input('\npress any key to end worg ...')
     sys.exit(exitcode)
 
 

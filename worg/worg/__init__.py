@@ -1,7 +1,7 @@
 import datetime
 import os
 import os.path
-from os.path import expanduser, isfile, join
+from os.path import isfile, join
 import subprocess
 import dateutil.parser
 
@@ -65,8 +65,7 @@ class Profile:
         pid = self.runningPid()
         if pid is not None:
             raise RuntimeError('Profile {} already running with PID {}'.format(self.name, pid))
-        if not self.availChecker.isAvailable():
-            raise RuntimeError(self.availChecker.message())
+        self.availChecker.assertAvailable()
         self.createPidfile()
         try:
             print('Running backup profile "{}" ...'.format(self))
