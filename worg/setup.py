@@ -9,6 +9,6 @@ setup(
     author='Michael Helmling',
     author_email='michaelhelmling@posteo.de',
     description='simple backup reminder script',
-    requires=['python-dateutil', 'pyxdg'],
+    install_requires=['python-dateutil', 'pyxdg'],
     entry_points={'console_scripts': ['worg = worg.script:run']},
 )
