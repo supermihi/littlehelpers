@@ -25,6 +25,12 @@ class PingAvailabilityChecker:
         return subprocess.call(['ping', '-c1', '-q', '-W1', self.url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+class AlwaysAvailableAvailabilityChecker:
+
+    def isAvailable(selfs):
+        return True
+
+
 def parse(config):
     if config['type'] == 'device':
         return DeviceAvailabilityChecker(config['path'])

@@ -16,7 +16,7 @@ def confDirectory():
 
 class Profile:
 
-    def __init__(self, name, interval: datetime.timedelta, command: str, availChecker = None):
+    def __init__(self, name, interval: datetime.timedelta, command: str, availChecker=None):
         self.name = name
         self.interval = interval
         self.command = command
@@ -60,6 +60,9 @@ class Profile:
         now = datetime.datetime.now()
         last = self.lastCompleted()
         return now - last > self.interval
+
+    def canRun(self):
+        return self.availChecker is not None and self.availChecker.isAvailable()
 
     def run(self):
         pid = self.runningPid()
