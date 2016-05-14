@@ -13,6 +13,8 @@ def run():
             userAns = input('Start now? [Yn]')
             if userAns in ['', 'Y', 'y']:
                 availDueProfile.run()
+        else:
+            input('')
     else:
         name = sys.argv[1]
         if name in profiles:
