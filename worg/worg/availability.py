@@ -1,7 +1,6 @@
 import os.path
 import subprocess
 
-
 class DeviceAvailabilityChecker:
 
     def __init__(self, path):

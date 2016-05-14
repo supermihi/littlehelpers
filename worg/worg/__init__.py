@@ -7,11 +7,8 @@ import dateutil.parser
 
 
 def confDirectory():
-    try:
-        import xdg.BaseDirectory
-        return join(xdg.BaseDirectory.xdg_config_home, 'worg')
-    except ImportError:
-        return expanduser('~/.config/worg')
+    import xdg.BaseDirectory
+    return join(xdg.BaseDirectory.xdg_config_home, 'worg')
 
 
 class Profile:

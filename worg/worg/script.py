@@ -6,22 +6,26 @@ import sys
 
 def run():
     profiles = createProfiles()
-
+    exitcode = 0
     if len(sys.argv) == 1:
         availDueProfile = check(profiles)
         if availDueProfile is not None:
             userAns = input('Start now? [Yn]')
             if userAns in ['', 'Y', 'y']:
                 availDueProfile.run()
-        else:
-            input('')
     else:
         name = sys.argv[1]
         if name in profiles:
-            profiles[name].run()
+            try:
+                profiles[name].run()
+            except:
+                exitcode = 1
         else:
             print('unknown backup profile {}'.format(name))
-            sys.exit(1)
+            exitcode = 1
+
+    input('press any key to end worg ...')
+    sys.exit(exitcode)
 
 
 def createProfiles():
