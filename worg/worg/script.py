@@ -11,7 +11,9 @@ def run():
     exitcode = 0
     if len(sys.argv) == 1:
         availDueProfile = check(profiles)
-        if availDueProfile is not None:
+        if availDueProfile is None:
+            sys.exit(0)
+        else:
             userAns = input('Start now? [Yn]')
             if userAns in ['', 'Y', 'y']:
                 availDueProfile.run()
