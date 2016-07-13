@@ -12,7 +12,7 @@ def run():
     if len(sys.argv) == 1:
         availDueProfile = check(profiles)
         if availDueProfile is None:
-            sys.exit(0)
+            return
         else:
             userAns = input('Start now? [Yn]')
             if userAns in ['', 'Y', 'y']:
@@ -56,6 +56,6 @@ def createProfiles():
 def check(profiles):
     for profile in profiles.values():
         if profile.isDue():
-            print('Backup "{}" is due! (Last completion time is {})'.format(profile, profile.lastCompleted()))
+            input('Backup "{}" is due! (Last completion time is {})'.format(profile, profile.lastCompleted()))
             if profile.canRun():
                 return profile
