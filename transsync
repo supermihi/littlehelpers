@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Script to maintain a copy of a music collection, in which FLAC files are recoded to OGG Vorbis for
-# space reasons. If possible, all other files are hard linked, so that no additional space is wasted
-# for them.
+"""
+Script to maintain a copy of a music collection, in which FLAC files are recoded to OGG Vorbis for
+space reasons. If possible, all other files are hard linked, so that no additional space is wasted
+for them.
+"""
 
-import os, subprocess, os.path
-import sys, time, shutil, signal
+import os
+import subprocess
+import sys
+import time
+import shutil
 from multiprocessing import Process, Value, Event, Queue
 from os.path import relpath, join, exists, getmtime, getsize, basename
-import collections
 import queue
 import argparse
 
-import taglib
 
-DEFAULT_SOURCE_PATH = '/ftp/musik'
-DEFAULT_TARGET_PATH = '/ftp/musiksmall'
 DEFAULT_OGG_OPTIONS = ['-Q', '-q3'] # quiet mode, normal quality
 
 
@@ -26,7 +27,7 @@ def runRsync(options):
                      '--exclude=*.flac', '--exclude=unsortiert & neu/*',
                      options.source + '/',
                      options.destination,
-                     '-va'] + [] if options.copy else ['-H'])
+                     '-va'] + ([] if options.copy else ['-H']))
     
 def startTranssync(options):
     encodingJobs = Queue()
@@ -80,7 +81,7 @@ def startTranssync(options):
                     encodingJobs.put((sourcefile, targetfile))
                     toEncode += 1
 
-    print('starting {} encoding threads for {} FLAC files'.format(options.threads, toEncode))
+    print(f'starting {options.threads} encoding threads for {toEncode} FLAC files')
     # create and start threads
     threads = []
     for i in range(options.threads):
@@ -116,7 +117,7 @@ def startTranssync(options):
         terminate.set()
     print('Waiting for threads to finish...')
     for t in threads:
-            t.join()
+        t.join()
 
 
 def encoderWorker(name, jobs, options, flacSize, oggSize, encoded, terminate):
@@ -152,10 +153,8 @@ def encoderWorker(name, jobs, options, flacSize, oggSize, encoded, terminate):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Maintain a copy of a music collection in which '
         'FLAC files are recoded to ogg vorbis.')
-    parser.add_argument('-s', '--source', default=DEFAULT_SOURCE_PATH,
-                        help='source directory (default: {})'.format(DEFAULT_SOURCE_PATH))
-    parser.add_argument('-d', '--destination', default=DEFAULT_TARGET_PATH,
-                        help='target directory (default: {}'.format(DEFAULT_TARGET_PATH))
+    parser.add_argument('source', help='source directory')
+    parser.add_argument('destination', help='target directory')
     parser.add_argument('-t', '--threads', type=int, default=os.cpu_count() - 1)
     parser.add_argument('-c', '--copy', action='store_true', help='always copy non-FLAC files '
         'instead of using hard links')
